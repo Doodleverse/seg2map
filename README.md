@@ -15,3 +15,5 @@ Tentative roadmap:
 - Notebook to
   - generate or edit label images for certain tiles using HoloDoodler code
 
+
+![](https://user-images.githubusercontent.com/3596509/194389595-82ade668-daf0-4d24-b1a0-6ecf897f40fe.gif)
