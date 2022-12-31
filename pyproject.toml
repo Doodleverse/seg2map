@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "Seg2Map"
+dynamic = ["readme"]
+version = "0.0.1"
+authors = [
+  { name=" Sharon Fitzpatrick", email="sharon.fitzpatrick23@gmail.com" },
+]
+# find` directive with `include` or `exclude`
+description = "An interactive jupyter notebook for downloading satellite imagery"
+dependencies = [
+  "area",
+  "doodleverse-utils>=0.0.18",
+  "ipyfilechooser>=0.6.0",
+  "tqdm",
+  "leafmap>=0.14.0",
+  "geemap",
+  "geojson",
+  "aiohttp",
+  "nest-asyncio",
+  "tensorflow"]
+license = { file="LICENSE" }
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+# tells setup tools to include the code in the coastseg directory within the src directory
+[tool.setuptools.packages.find]
+where = ["src"]
+
+
+[project.urls]
+"Homepage" = "https://github.com/SatelliteShorelines/CoastSeg"
+"Bug Tracker" = "https://github.com/SatelliteShorelines/CoastSeg/issues"

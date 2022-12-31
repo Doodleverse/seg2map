@@ -1,0 +1,878 @@
+import os
+import json
+import logging
+from typing import Union
+from typing import List
+
+from src.seg2map import common
+from src.seg2map import factory
+from src.seg2map.roi import ROI
+from src.seg2map import exceptions
+from src.seg2map import exception_handler
+
+import geopandas as gpd
+from ipyleaflet import DrawControl, LayersControl, WidgetControl, GeoJSON
+from leafmap import Map
+from ipywidgets import Layout, HTML, Accordion
+from ipywidgets import ToggleButton
+from ipywidgets import HBox
+from ipywidgets import VBox
+from ipywidgets import HTML
+
+logger = logging.getLogger(__name__)
+
+
+class CoastSeg_Map:
+    def __init__(self, settings: dict = None):
+        self.factory = factory.Factory()
+        # settings:  used to select data to download and preprocess settings
+        self.settings = {}
+        if settings is not None:
+            tmp_settings = {**settings, **self.settings}
+            self.settings = tmp_settings.copy()
+        # selected_set set(str): ids of the selected rois
+        self.selected_set = set()
+        # selected_set set(str): ids of rois selected for deletion
+        self.delete_set = set()
+        # ROI objects on map
+        self.rois = None
+        # ids of rois
+        self.ids = []
+        # selected layer name
+        self.SELECTED_LAYER_NAME = "selected ROIs"
+        # layer that contains ROIs that will be deleted
+        self.DELETE_LAYER_NAME = "ROIs to delete"
+        # preprocess_settings : dictionary of settings used by coastsat to download imagery
+        self.preprocess_settings = {}
+        # create map if map_settings not provided else use default settings
+        self.map = self.create_map()
+        # create controls and add to map
+        self.draw_control = self.create_DrawControl(DrawControl())
+        self.draw_control.on_draw(self.handle_draw)
+        self.map.add(self.draw_control)
+        layer_control = LayersControl(position="topright")
+        self.map.add(layer_control)
+        hover_accordion_control = self.create_accordion_widget()
+        self.map.add(hover_accordion_control)
+        # action box is used to perform actions on selected ROIs like deletion
+        self.remove_box = HBox([])
+        self.action_widget = WidgetControl(widget=self.remove_box, position="topleft")
+        self.map.add(self.action_widget)
+        self.warning_box = HBox([])
+        self.warning_widget = WidgetControl(widget=self.warning_box, position="topleft")
+        self.map.add(self.warning_widget)
+
+    def create_delete_box(self, title: str = None, msg: str = None):
+        padding = "0px 0px 0px 5px"  # upper, right, bottom, left
+        # create title
+        if title is None:
+            title = "Delete Selected ROIs?"
+        warning_title = HTML(f"<b>⚠️<u>{title}</u></b>")
+        # create msg
+        if msg is None:
+            msg = "Select ROIs to be deleted then click ok"
+        warning_msg = HTML(
+            f"______________________________________________________________________\
+                    </br>⚠️{msg}"
+        )
+        # create vertical box to hold title and msg
+        warning_content = VBox([warning_title, warning_msg])
+        # define a close button
+        close_button = ToggleButton(
+            value=False,
+            tooltip="Close Warning Box",
+            icon="times",
+            button_style="danger",
+            layout=Layout(height="28px", width="28px", padding=padding),
+        )
+
+        def close_click(change):
+            if change["new"]:
+                warning_content.close()
+                close_button.close()
+                ok_button.close()
+                # revert map back to normal state
+                self.exit_delete_state()
+
+        # define a ok button that deletes selected ROI on click
+        ok_button = ToggleButton(
+            value=False,
+            description="OK",
+            tooltip="Deletes ROI",
+            button_style="danger",
+            layout=Layout(height="28px", width="40px", padding=padding),
+        )
+        # handler for ok button that deletes selected ROI on click
+        def ok_click(change):
+            if change["new"]:
+                try:
+                    logger.info(f"Deleting selected ROIs {self.delete_set}")
+                    self.remove_selected_rois(self.delete_set)
+                    # revert map back to normal state
+                    self.exit_delete_state()
+                    warning_content.close()
+                    close_button.close()
+                    ok_button.close()
+                except Exception as error:
+                    # renders error message as a box on map
+                    exception_handler.handle_exception(error, self.warning_box)
+
+        ok_button.observe(ok_click, "value")
+        close_button.observe(close_click, "value")
+        top_row = HBox([warning_content, close_button])
+        delete_box = VBox([top_row, ok_button])
+        return delete_box
+
+    def create_map(self):
+        """create an interactive map object using the map_settings
+        Returns:
+           ipyleaflet.Map: ipyleaflet interactive Map object
+        """
+        map_settings = {
+            "center_point": (40.8630302395, -124.166267),
+            "zoom": 13,
+            "draw_control": False,
+            "measure_control": False,
+            "fullscreen_control": False,
+            "attribution_control": True,
+            "Layout": Layout(width="100%", height="100px"),
+        }
+        return Map(
+            draw_control=map_settings["draw_control"],
+            measure_control=map_settings["measure_control"],
+            fullscreen_control=map_settings["fullscreen_control"],
+            attribution_control=map_settings["attribution_control"],
+            center=map_settings["center_point"],
+            zoom=map_settings["zoom"],
+            layout=map_settings["Layout"],
+        )
+
+    def create_accordion_widget(self):
+        """creates a accordion style widget controller to hold data of
+        a feature that was last hovered over by user on map.
+        Returns:
+           ipyleaflet.WidgetControl: an widget control for an accordion widget
+        """
+        roi_html = HTML("Hover over a ROI on the map")
+        roi_html.layout.margin = "0px 20px 20px 20px"
+        self.accordion = Accordion(
+            children=[roi_html], titles=("Features Data", "ROI Data")
+        )
+        self.accordion.set_title(0, "ROI Data")
+        return WidgetControl(widget=self.accordion, position="topright")
+
+    def load_configs(self, filepath: str) -> None:
+        """Loads features from geojson config file onto map and loads
+        config.json file into settings. The config.json should be located into
+        the same directory as the config.geojson file
+        Args:
+            filepath (str): full path to config.geojson file
+        """
+        # load geodataframe from config and load features onto map
+        self.load_gdf_config(filepath)
+        # path to directory to search for config_gdf.json file
+        search_path = os.path.dirname(os.path.realpath(filepath))
+        # create path to config.json file in search_path directory
+        config_file = common.find_config_json(search_path)
+        config_path = os.path.join(search_path, config_file)
+        logger.info(f"Loaded json config file from {config_path}")
+        # load settings from config.json file
+        self.load_json_config(config_path)
+
+    def load_gdf_config(self, filepath: str) -> None:
+        """Load features from geodataframe located in geojson file
+        located at filepath onto map.
+
+        features in config file should contain a column named "type"
+        which contains the name of one of the following possible feature types
+        "roi","bbox".
+        Args:
+            filepath (str): full path to config.geojson
+        """
+        print(f"Loading {filepath}")
+        logger.info(f"Loading {filepath}")
+        gdf = common.read_gpd_file(filepath)
+        # Extract ROIs from gdf and create new dataframe
+        roi_gdf = gdf[gdf["type"] == "roi"].copy()
+        exception_handler.check_if_gdf_empty(
+            roi_gdf,
+            "ROIs from config",
+            "No ROIs were present in the config file: {filepath}",
+        )
+        # drop all columns except id and geometry
+        columns_to_drop = list(set(roi_gdf.columns) - set(["id", "geometry"]))
+        logger.info(f"Dropping columns from ROI: {columns_to_drop}")
+        roi_gdf.drop(columns_to_drop, axis=1, inplace=True)
+        logger.info(f"roi_gdf: {roi_gdf}")
+        # Extract bbox from gdf
+        bbox_gdf = gdf[gdf["type"] == "bbox"].copy()
+        columns_to_drop = list(set(bbox_gdf.columns) - set(["geometry"]))
+        logger.info(f"Dropping columns from bbox: {columns_to_drop}")
+        bbox_gdf.drop(columns_to_drop, axis=1, inplace=True)
+        logger.info(f"bbox_gdf: {bbox_gdf}")
+        # delete the original gdf read in from config geojson file
+        del gdf
+        # Create ROI object from roi_gdf
+        exception_handler.check_if_gdf_empty(
+            roi_gdf, "ROIs", "Cannot load empty ROIs onto map"
+        )
+        self.rois = ROI(rois_gdf=roi_gdf)
+        self.load_feature_on_map("rois", gdf=roi_gdf)
+
+    def download_imagery(self) -> None:
+        """downloads selected rois as jpgs
+
+        Raises:
+            Exception: raised if settings is missing
+            Exception: raised if 'dates','sat_list', and 'landsat_collection' are not in settings
+            Exception: raised if no ROIs have been selected
+        """
+        print("Called download imagery")
+
+    def load_json_config(self, filepath: str) -> None:
+        exception_handler.check_if_None(self.rois)
+        json_data = common.read_json_file(filepath)
+        # replace coastseg_map.settings with settings from config file
+        self.settings = json_data["settings"]
+        logger.info(f"Loaded settings from file: {self.settings}")
+        # replace roi_settings for each ROI with contents of json_data
+        roi_settings = {}
+        for roi_id in json_data["roi_ids"]:
+            roi_settings[str(roi_id)] = json_data[roi_id]
+        # Save input dictionaries for all ROIs
+        self.rois.roi_settings = roi_settings
+        logger.info(f"roi_settings: {roi_settings}")
+
+    def save_config(self, filepath: str = None) -> None:
+        """saves the configuration settings of the map into two files
+            config.json and config.geojson
+            Saves the inputs such as dates, landsat_collection, satellite list, and ROIs
+            Saves the settings such as preprocess settings
+        Args:
+            file_path (str, optional): path to directory to save config files. Defaults to None.
+        Raises:
+            Exception: raised if self.settings is missing
+            ValueError: raised if any of "dates", "sat_list", "landsat_collection" is missing from self.settings
+            Exception: raised if self.rois is missing
+            Exception: raised if selected_layer is missing
+        """
+        exception_handler.config_check_if_none(self.settings, "settings")
+        # settings must contain keys in subset
+        subset = set(["dates", "sat_list", "landsat_collection"])
+        superset = set(list(self.settings.keys()))
+        exception_handler.check_if_subset(subset, superset, "settings")
+        exception_handler.config_check_if_none(self.rois, "ROIs")
+        # selected_layer must contain selected ROI
+        selected_layer = self.map.find_layer(self.SELECTED_LAYER_NAME)
+        exception_handler.check_empty_roi_layer(selected_layer)
+        logger.info(f"self.rois.roi_settings: {self.rois.roi_settings}")
+        if self.rois.roi_settings == {}:
+            if filepath is None:
+                filepath = os.path.abspath(os.getcwd())
+            roi_settings = common.create_roi_settings(
+                self.settings, selected_layer.data, filepath
+            )
+            # Save download settings dictionary to instance of ROI
+            self.rois.set_roi_settings(roi_settings)
+        # create dictionary to be saved to config.json
+        config_json = common.create_json_config(self.rois.roi_settings, self.settings)
+        logger.info(f"config_json: {config_json} ")
+        # get currently selected rois selected
+        roi_ids = config_json["roi_ids"]
+        selected_rois = self.get_selected_rois(roi_ids)
+        logger.info(f"selected_rois: {selected_rois} ")
+        # save all selected rois, shorelines, transects and bbox to config geodataframe
+        config_gdf = common.create_config_gdf(selected_rois)
+        logger.info(f"config_gdf: {config_gdf} ")
+        is_downloaded = common.were_rois_downloaded(self.rois.roi_settings, roi_ids)
+        if filepath is not None:
+            # save to config.json
+            common.config_to_file(config_json, filepath)
+            # save to config_gdf.geojson
+            common.config_to_file(config_gdf, filepath)
+        elif filepath is None:
+            # data has been downloaded before so inputs have keys 'filepath' and 'sitename'
+            if is_downloaded == True:
+                # write config_json file to each directory where a roi was saved
+                roi_ids = config_json["roi_ids"]
+                for roi_id in roi_ids:
+                    sitename = str(config_json[roi_id]["sitename"])
+                    filepath = os.path.abspath(
+                        os.path.join(config_json[roi_id]["filepath"], sitename)
+                    )
+                    # save to config.json
+                    common.config_to_file(config_json, filepath)
+                    # save to config_gdf.geojson
+                    common.config_to_file(config_gdf, filepath)
+                print("Saved config files for each ROI")
+            elif is_downloaded == False:
+                # if data is not downloaded save to coastseg directory
+                filepath = os.path.abspath(os.getcwd())
+                # save to config.json
+                common.config_to_file(config_json, filepath)
+                # save to config_gdf.geojson
+                common.config_to_file(config_gdf, filepath)
+
+    def save_settings(self, **kwargs):
+        """Saves the settings for downloading data in a dictionary
+        Pass in data in the form of
+        save_settings(sat_list=sat_list, dates=dates,**preprocess_settings)
+        *You must use the names sat_list, landsat_collection, and dates
+        """
+        tmp_settings = self.settings.copy()
+        for key, value in kwargs.items():
+            tmp_settings[key] = value
+
+        self.settings = tmp_settings.copy()
+        del tmp_settings
+        logger.info(f"Settings: {self.settings}")
+
+    def update_roi_html(self, feature, **kwargs):
+        # Modifies html of accordion when roi is hovered over
+        keys = [
+            "id",
+        ]
+        # returns a dict with provided keys and if a given key does not exist in the feature's properties its value is default str
+        values = common.get_default_dict(
+            default="unknown", keys=keys, fill_dict=feature["properties"]
+        )
+        logger.info(f"ROI feature: {feature}")
+        # convert area of ROI to km^2
+        roi_area = common.get_area(feature["geometry"]) * 10**-6
+        self.accordion.children[
+            0
+        ].value = """ 
+        <h2>ROI</h2>
+        <p>Id: {}</p>
+        <p>Area(km²): {}</p>
+        """.format(
+            values["id"], roi_area
+        )
+
+    def get_selected_rois(self, roi_ids: list) -> gpd.GeoDataFrame:
+        """Returns a geodataframe of all rois whose ids are in given list
+        roi_ids.
+
+        Args:
+            roi_ids (list[str]): ids of ROIs
+
+        Returns:
+            gpd.GeoDataFrame:  geodataframe of all rois selected by the roi_ids
+        """
+        selected_rois_gdf = self.rois.gdf[self.rois.gdf["id"].isin(roi_ids)]
+        return selected_rois_gdf
+
+    def remove_all(self):
+        """Remove the bbox, all rois from the map"""
+        self.remove_all_rois()
+        self.remove_accordion_html()
+
+    def remove_layer_by_name(self, layer_name: str):
+        existing_layer = self.map.find_layer(layer_name)
+        if existing_layer is not None:
+            self.map.remove_layer(existing_layer)
+        logger.info(f"Removed layer {layer_name}")
+
+    def remove_accordion_html(self):
+        """Clear the html accordion"""
+        self.accordion.children[0].value = "Hover over a ROI on the map."
+
+    def replace_layer_by_name(
+        self, layer_name: str, new_layer: GeoJSON, on_hover=None, on_click=None
+    ) -> None:
+        """Replaces layer with layer_name with new_layer on map. Adds on_hover and on_click callable functions
+        as handlers for hover and click events on new_layer
+        Args:
+            layer_name (str): name of layer to replace
+            new_layer (GeoJSON): ipyleaflet GeoJSON layer to add to map
+            on_hover (callable, optional): Callback function that will be called on hover event on a feature, this function
+            should take the event and the feature as inputs. Defaults to None.
+            on_click (callable, optional): Callback function that will be called on click event on a feature, this function
+            should take the event and the feature as inputs. Defaults to None.
+        """
+        logger.info(
+            f"layer_name {layer_name} \non_hover {on_hover}\n on_click {on_click}"
+        )
+        self.remove_layer_by_name(layer_name)
+        exception_handler.check_empty_layer(new_layer, layer_name)
+        # when feature is hovered over on_hover function is called
+        if on_hover is not None:
+            new_layer.on_hover(on_hover)
+        if on_click is not None:
+            # when feature is clicked on on_click function is called
+            new_layer.on_click(on_click)
+        self.map.add_layer(new_layer)
+        logger.info(f"Add layer to map: {layer_name}")
+
+    def remove_selected_rois(self, ids: List[int]):
+        # remove each roi by id selected by user
+        for roi_id in ids:
+            self.rois.remove_by_id(roi_id)
+        logger.info(f"self.rois.gdf after removing ids {ids}: {self.rois.gdf}")
+        # remove all deleted rois from ids and selected set
+        logger.info(f"ids {ids}")
+        for roi_id in ids:
+            if roi_id in self.ids:
+                self.ids.remove(roi_id)
+            if roi_id in self.selected_set:
+                self.selected_set.remove(roi_id)
+        logger.info(f"selected_set {self.selected_set} after removing ids {ids}")
+        logger.info(f"self.ids {self.ids} after removing ids {ids}")
+
+    def remove_all_rois(self) -> None:
+        """Removes all the unselected rois from the map"""
+        self.draw_control.clear()
+        existing_layer = self.map.find_layer(ROI.LAYER_NAME)
+        if existing_layer is not None:
+            self.map.remove_layer(existing_layer)
+        self.rois = None
+        logger.info("Removing all ROIs from map")
+        # remove all roi ids from ids list
+        self.ids = []
+        # Remove the selected and unselected rois
+        self.remove_layer_by_name(self.SELECTED_LAYER_NAME)
+        self.remove_layer_by_name(ROI.LAYER_NAME)
+        # clear all the ids from the selected set
+        self.selected_set = set()
+
+    def create_DrawControl(self, draw_control: "ipyleaflet.leaflet.DrawControl"):
+        """Modifies given draw control so that only rectangles can be drawn
+
+        Args:
+            draw_control (ipyleaflet.leaflet.DrawControl): draw control to modify
+
+        Returns:
+            ipyleaflet.leaflet.DrawControl: modified draw control with only ability to draw rectangles
+        """
+        draw_control.polyline = {}
+        draw_control.circlemarker = {}
+        draw_control.polygon = {}
+        draw_control.rectangle = {
+            "shapeOptions": {
+                "fillColor": "green",
+                "color": "green",
+                "fillOpacity": 0.1,
+                "Opacity": 0.1,
+            },
+            "drawError": {"color": "#dd253b", "message": "Ops!"},
+            "allowIntersection": False,
+            "transform": True,
+        }
+        return draw_control
+
+    def exit_delete_state(self):
+        """Exit delete state for the map.
+
+        This function removes the ROI layer with the "select for delete" on click handlers attached,
+        replaces it with a new ROI layer that has the "select" on click handler, and brings the
+        selected ROI layer back onto the map with the deleted ROIs removed. It also empties the
+        delete set and removes the layer containing the ROIs selected for deletion.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        # remove the roi layer that has the select for delete on click handlers attached
+        self.remove_layer_by_name(ROI.LAYER_NAME)
+        # replaces roi layer new layer that has on click handler to select the roi
+        if not self.rois.gdf.empty:
+            # add roi hover and click handlers for roi
+            on_hover = self.update_roi_html
+            on_click = self.select_onclick_handler
+            layer_name = ROI.LAYER_NAME
+            # load new roi layer on map that doesn't contain rois that were removed
+            self.load_on_map(self.rois, layer_name, on_hover, on_click)
+        # bring selected roi layer back onto map with deleted rois removed
+        if len(self.selected_set) > 0:
+            layer_name = ROI.LAYER_NAME
+            # create new selected layer with remaining ids in selected set
+            selected_layer = GeoJSON(
+                data=self.convert_selected_set_to_geojson(
+                    self.selected_set, layer_name=layer_name
+                ),
+                name=self.SELECTED_LAYER_NAME,
+                hover_style={"fillColor": "blue", "fillOpacity": 0.1, "color": "aqua"},
+            )
+            logger.info(f"selected_layer: {selected_layer}")
+            # add new selected layer onto map
+            self.replace_layer_by_name(
+                self.SELECTED_LAYER_NAME,
+                selected_layer,
+                on_click=self.deselect_onclick_handler,
+                on_hover=self.update_roi_html,
+            )
+        # empty self.delete_set so its empty for next time
+        self.delete_set = set()
+        # remove layer containing rois selected for deletion
+        self.remove_layer_by_name(self.DELETE_LAYER_NAME)
+
+    def enter_delete_state(self):
+        """Enter delete state for the map.
+
+        This function removes the selected layer from the map and changes the color of
+        the ROIs (Regions of Interest) to red to indicate that they will be deleted. It also
+        sets the on_hover and on_click properties for the ROIs to update the ROI HTML and allows
+        the user to select the ROIs for deletion, respectively.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        # temporarily remove selected layer from map
+        self.remove_layer_by_name(self.SELECTED_LAYER_NAME)
+        # change color of ROIs to red to indicate they will be deleted
+        on_hover = self.update_roi_html
+        on_click = self.select_for_delete_onclick
+        layer_name = ROI.LAYER_NAME
+        self.load_on_map(self.rois, layer_name, on_hover, on_click)
+
+    def launch_delete_box(
+        self, row: "ipywidgets.HBox", title: str = None, msg: str = None
+    ):
+        """Launch the delete box for the map.
+
+        This function displays a delete box to the user, puts the ROI layers in delete state,
+        and adds the delete box to a row in the user interface.
+
+        Args:
+            row: A row widget (instance of `ipywidgets.HBox`) to which the delete box will be added.
+            title: An optional title for the delete box.
+            msg: An optional message for the delete box.
+
+        Returns:
+            None
+        """
+        # Show user error message
+        delete_box = self.create_delete_box(title=title, msg=msg)
+        # put roi layers in delete state where they will turn red on click and add ids to delete set
+        self.enter_delete_state()
+        # clear row and close all widgets in self.file_row before adding new delete_box
+        common.clear_row(row)
+        # add instance of delete_box to row
+        row.children = [delete_box]
+
+    def handle_draw(
+        self, target: "ipyleaflet.leaflet.DrawControl", action: str, geo_json: dict
+    ):
+        """Adds or removes the bounding box  when drawn/deleted from map
+        Args:
+            target (ipyleaflet.leaflet.DrawControl): draw control used
+            action (str): name of the most recent action ex. 'created', 'deleted'
+            geo_json (dict): geojson dictionary
+        """
+        logger.info("Draw occurred")
+        if (
+            self.draw_control.last_action == "created"
+            and self.draw_control.last_draw["geometry"]["type"] == "Polygon"
+        ):
+            # validate the bbox size
+            geometry = self.draw_control.last_draw["geometry"]
+            bbox_area = common.get_area(geometry)
+            logger.info(f"bbox_area: {bbox_area}")
+            try:
+                ROI.check_size(bbox_area)
+            except exceptions.TooLargeError as too_big:
+                self.draw_control.clear()
+                exception_handler.handle_bbox_error(too_big, self.warning_box)
+            except exceptions.TooSmallError as too_small:
+                self.draw_control.clear()
+                exception_handler.handle_bbox_error(too_small, self.warning_box)
+            else:
+                logger.info("creating bbox")
+                logger.info(f"self.ids {self.ids}")
+                # if no exceptions occur create new bbox, remove old bbox, and load new bbox
+                new_id = "1" if self.ids == [] else str(int(max(self.ids)) + 1)
+                self.ids.append(new_id)
+                logger.info(f"New id {new_id}")
+                logger.info(f"self.ids {self.ids}")
+                self.load_feature_on_map("rois", new_id)
+
+    def load_feature_on_map(
+        self,
+        feature_name: str,
+        new_id: str = "",
+        file: str = "",
+        gdf: gpd.GeoDataFrame = None,
+        **kwargs,
+    ) -> None:
+        """Loads feature of type feature_name onto the map either from a file or from a geodataframe given by gdf
+
+        if feature_name given is not "rois" throw exception
+
+        Args:
+            feature_name (str): name of feature must be one of the following
+            "rois"
+            file (str, optional): geojson file containing feature. Defaults to "".
+            gdf (gpd.GeoDataFrame, optional): geodataframe containing feature geometry. Defaults to None.
+        """
+        # if file is passed read gdf from file
+        if file != "":
+            gdf = common.read_gpd_file(file)
+
+        new_feature = self.factory.make_feature(
+            self, feature_name, gdf, new_id=new_id, **kwargs
+        )
+        logger.info(f"new_feature: {new_feature}")
+        logger.info(f"feature_name: {feature_name.lower()}")
+        on_hover = None
+        on_click = None
+        if "roi" in feature_name.lower():
+            on_hover = self.update_roi_html
+            on_click = self.select_onclick_handler
+        # load new feature on map
+        layer_name = new_feature.LAYER_NAME
+        self.load_on_map(new_feature, layer_name, on_hover, on_click)
+
+    def load_on_map(
+        self, feature, layer_name: str, on_hover=None, on_click=None
+    ) -> None:
+        """Loads feature on map
+
+        Replaces current feature layer on map with given feature
+
+        Raises:
+            Exception: raised if feature layer is empty
+        """
+        # style and add the feature to the map
+        new_layer = self.create_layer(feature, layer_name)
+        # Replace old feature layer with new feature layer
+        self.replace_layer_by_name(
+            layer_name, new_layer, on_hover=on_hover, on_click=on_click
+        )
+
+    def create_layer(self, feature, layer_name: str):
+        if hasattr(feature, "gdf"):
+            if feature.gdf.empty:
+                logger.warning("Cannot add an empty geodataframe layer to the map.")
+                print("Cannot add an empty geodataframe layer to the map.")
+                return None
+            layer_geojson = json.loads(feature.gdf.to_json())
+        elif not hasattr(feature, "gdf"):
+            raise Exception(
+                f"Invalid feature or no feature provided. Cannot create layer.{type(feature)}"
+            )
+
+        # convert layer to GeoJson and style it accordingly
+        styled_layer = feature.style_layer(layer_geojson, layer_name)
+        return styled_layer
+
+    def select_for_delete_onclick(
+        self, event: str = None, id: "NoneType" = None, properties: dict = None, **args
+    ):
+        """On click handler for when unselected geojson is clicked.
+
+        Adds feature's id to delete_set. Replaces current selected layer with a new one that includes
+        recently clicked geojson.
+
+        Args:
+            event (str, optional): event fired ('click'). Defaults to None.
+            id (NoneType, optional):  Defaults to None.
+            properties (dict, optional): geojson dict for clicked geojson. Defaults to None.
+        """
+        if properties is None:
+            return
+        logger.info(f"properties of roi selected for deletion : {properties}")
+        logger.info(f"ROI_id of roi selected for deletion : {properties['id']}")
+
+        # Add id of clicked ROI to selected_set
+        ROI_id = str(properties["id"])
+        self.delete_set.add(ROI_id)
+        logger.info(f"Added ID to delete_set: {self.delete_set}")
+        # create new layer of rois selected for deletion
+        layer_name = ROI.LAYER_NAME
+        # delete_layer = GeoJSON(
+        #     data=self.convert_delete_set_to_geojson(
+        #         self.delete_set, layer_name=layer_name
+        #     ),
+        #     name=self.DELETE_LAYER_NAME,
+        #     hover_style={"fillColor": "red", "fillOpacity": 0.1, "color": "red"},
+        # )
+        delete_layer = GeoJSON(
+            data=self.convert_selected_set_to_geojson(
+                self.delete_set,
+                layer_name=layer_name,
+                color="red",
+            ),
+            name=self.DELETE_LAYER_NAME,
+            hover_style={"fillColor": "red", "fillOpacity": 0.1, "color": "red"},
+        )
+
+        logger.info(f"delete_layer: {delete_layer}")
+        self.replace_layer_by_name(
+            self.DELETE_LAYER_NAME,
+            delete_layer,
+            on_click=self.deselect_for_delete_onclick,
+            on_hover=self.update_roi_html,
+        )
+
+    def deselect_for_delete_onclick(
+        self, event: str = None, id: "NoneType" = None, properties: dict = None, **args
+    ):
+        """On click handler for rois selected for deletion layer.
+
+        Removes clicked roi's id from the deleted_set and replaces the delete layer with a new one with
+        the clicked roi removed from delete_layer.
+
+        Args:
+            event (str, optional): event fired ('click'). Defaults to None.
+            id (NoneType, optional):  Defaults to None.
+            properties (dict, optional): geojson dict for clicked selected geojson. Defaults to None.
+        """
+        if properties is None:
+            return
+        # Remove the current layers cid from selected set
+        logger.info(f"properties of ROI selected: {properties}")
+        logger.info(f"ROI_id to remove from delete set: {properties['id']}")
+        roi_id = properties["id"]
+        self.delete_set.remove(roi_id)
+        logger.info(f"delete set after ID removal: {self.delete_set}")
+        # Recreate delete layers without layer that was removed
+        layer_name = ROI.LAYER_NAME
+        delete_layer = GeoJSON(
+            data=self.convert_selected_set_to_geojson(
+                self.delete_set,
+                layer_name=layer_name,
+                color="red",
+            ),
+            name=self.DELETE_LAYER_NAME,
+            hover_style={"fillColor": "red", "fillOpacity": 0.1, "color": "red"},
+        )
+        self.replace_layer_by_name(
+            self.DELETE_LAYER_NAME,
+            delete_layer,
+            on_click=self.select_for_delete_onclick,
+            on_hover=self.update_roi_html,
+        )
+
+    def select_onclick_handler(
+        self, event: str = None, id: "NoneType" = None, properties: dict = None, **args
+    ):
+        """On click handler for when unselected geojson is clicked.
+
+        Adds feature's id to selected_set. Replaces current selected layer with a new one that includes
+        recently clicked geojson.
+
+        Args:
+            event (str, optional): event fired ('click'). Defaults to None.
+            id (NoneType, optional):  Defaults to None.
+            properties (dict, optional): geojson dict for clicked geojson. Defaults to None.
+        """
+        if properties is None:
+            return
+        logger.info(f"properties : {properties}")
+        logger.info(f"ROI_id : {properties['id']}")
+
+        # Add id of clicked ROI to selected_set
+        ROI_id = str(properties["id"])
+        self.selected_set.add(ROI_id)
+        logger.info(f"Added ID to selected set: {self.selected_set}")
+        # create new layer of selected rois
+        layer_name = ROI.LAYER_NAME
+        selected_layer = GeoJSON(
+            data=self.convert_selected_set_to_geojson(
+                self.selected_set, layer_name=layer_name
+            ),
+            name=self.SELECTED_LAYER_NAME,
+            hover_style={"fillColor": "blue", "fillOpacity": 0.1, "color": "aqua"},
+        )
+        logger.info(f"selected_layer: {selected_layer}")
+        self.replace_layer_by_name(
+            self.SELECTED_LAYER_NAME,
+            selected_layer,
+            on_click=self.deselect_onclick_handler,
+            on_hover=self.update_roi_html,
+        )
+
+    def deselect_onclick_handler(
+        self, event: str = None, id: "NoneType" = None, properties: dict = None, **args
+    ):
+        """On click handler for selected geojson layer.
+
+        Removes clicked layer's cid from the selected_set and replaces the select layer with a new one with
+        the clicked layer removed from select_layer.
+
+        Args:
+            event (str, optional): event fired ('click'). Defaults to None.
+            id (NoneType, optional):  Defaults to None.
+            properties (dict, optional): geojson dict for clicked selected geojson. Defaults to None.
+        """
+        if properties is None:
+            return
+        # Remove the current layers cid from selected set
+        logger.info(f"deselect_onclick_handler: properties : {properties}")
+        logger.info(f"deselect_onclick_handler: ROI_id to remove : {properties['id']}")
+        cid = properties["id"]
+        self.selected_set.remove(cid)
+        logger.info(f"selected set after ID removal: {self.selected_set}")
+        self.remove_layer_by_name(self.SELECTED_LAYER_NAME)
+        # Recreate selected layers without layer that was removed
+        layer_name = ROI.LAYER_NAME
+        selected_layer = GeoJSON(
+            data=self.convert_selected_set_to_geojson(
+                self.selected_set, layer_name=layer_name
+            ),
+            name=self.SELECTED_LAYER_NAME,
+            hover_style={"fillColor": "blue", "fillOpacity": 0.1, "color": "aqua"},
+        )
+        self.replace_layer_by_name(
+            self.SELECTED_LAYER_NAME,
+            selected_layer,
+            on_click=self.deselect_onclick_handler,
+            on_hover=self.update_roi_html,
+        )
+
+    def save_feature_to_file(
+        self,
+        feature: ROI,
+        feature_type: str = "",
+    ):
+        exception_handler.can_feature_save_to_file(feature, feature_type)
+        if isinstance(feature, ROI):
+            # raise exception if no rois were selected
+            exception_handler.check_selected_set(self.selected_set)
+            feature.gdf[feature.gdf["id"].isin(self.selected_set)].to_file(
+                feature.filename, driver="GeoJSON"
+            )
+        else:
+            logger.info(f"Saving feature type( {feature}) to file")
+            feature.gdf.to_file(feature.filename, driver="GeoJSON")
+        print(f"Save {feature.LAYER_NAME} to {feature.filename}")
+        logger.info(f"Save {feature.LAYER_NAME} to {feature.filename}")
+
+    def convert_selected_set_to_geojson(
+        self, selected_set: set, layer_name: str = "", color: str = "blue"
+    ) -> dict:
+        """Returns a geojson dictionary containing features with ids in selected set. Features are styled with a blue border and
+        blue fill color to indicate they've been selected by the user.
+        Args:
+            selected_set (set): ids of selected geojson
+            layer_name (str): name of roi layer containing all rois
+        Returns:
+           dict: geojson dict containing FeatureCollection for all geojson objects in selected_set
+        """
+        # create a new geojson dictionary to hold selected ROIs
+        selected_rois = {"type": "FeatureCollection", "features": []}
+        roi_layer = self.map.find_layer(layer_name)
+        logger.info(f"roi_layer: {roi_layer}")
+        # if ROI layer does not exist throw an error
+        exception_handler.check_empty_layer(roi_layer, layer_name)
+        # Copy only selected ROIs with id in selected_set
+        selected_rois["features"] = [
+            feature
+            for feature in roi_layer.data["features"]
+            if feature["properties"]["id"] in selected_set
+        ]
+        logger.info(f"selected_rois['features']: {selected_rois['features']}")
+        # Each selected ROI will be blue and unselected rois will appear black
+        for feature in selected_rois["features"]:
+            feature["properties"]["style"] = {
+                "color": color,
+                "weight": 2,
+                "fillColor": color,
+                "fillOpacity": 0.1,
+            }
+        return selected_rois
