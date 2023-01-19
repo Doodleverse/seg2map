@@ -39,6 +39,12 @@ from shapely.geometry import LineString, MultiPolygon, Polygon
 from shapely.ops import split
 from osgeo import gdal
 
+from time import perf_counter
+
+start = perf_counter()
+with open('original_timer.txt','w') as f:
+    f.write(f"Start Time {start}")
+
 ###=================================================
 ############### USER INPUTS #########################
 ###=================================================
@@ -48,14 +54,15 @@ MAXCLOUD = 5  # percentage maximum cloud cover tolerated
 
 OUT_RES_M = 0.5  # output raster spatial footprint in metres
 
-nx, ny = 2, 1  # number of columns and rows to split
+nx, ny = 2, 2  # number of columns and rows to split
 
 # site = 'beaches' #name of the site
 # site = 'hidden_beach' #name of the site
 site = "hidden_beachs"  # name of the site
 # name of file containing
 # roifile = 'example_singleROI.geojson'
-roifile = 'hidden_beach.geojson'
+roifile = r'C:\1_USGS\5_Doodleverse\1_Seg2Map_fork\seg2map\src\seg2map\NAIP\hidden_beach.geojson'
+filename=r'C:\1_USGS\5_Doodleverse\1_Seg2Map_fork\seg2map\src\seg2map\NAIP\hidden_beach.geojson'
 # roifile = "multi_sites_tests.geojson"
 ## years of data collection (list of strings)
 # years = ['2006', '2009','2011','2013','2015','2017']
@@ -314,3 +321,8 @@ for featurenumber, feature in enumerate(features):
 
         except:
             print("Data not available")
+
+end = perf_counter()
+total_time = end-start
+with open('original_timer.txt','a') as f:
+    f.write(f"\nEnd Time {end}\n Total Time: {total_time}")
