@@ -1,8 +1,15 @@
+# (Seg2Map only) 
+# downloaded files to ignore
+*chunk*
+*merged*
+*.tif*
+*multiband*
+*USDA*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
-*chunk*
 # C extensions
 *.so
 
