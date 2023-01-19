@@ -23,7 +23,6 @@ from ipywidgets import DatePicker
 from ipywidgets import HTML
 from ipywidgets import RadioButtons
 from ipywidgets import Text
-from ipywidgets import SelectMultiple
 from ipywidgets import Output
 
 
@@ -117,6 +116,12 @@ class UI:
     def get_settings_accordion(self):
         # declare settings widgets
         dates_vbox = self.get_dates_picker()
+        self.sitename_field = Text(
+            value="sitename",
+            placeholder="Type sitename",
+            description="Sitename:",
+            disabled=False,
+        )
 
         settings_button = Button(description="Save Settings", style=self.action_style)
         settings_button.on_click(self.save_settings_clicked)
@@ -125,6 +130,7 @@ class UI:
         settings_vbox = VBox(
             [
                 dates_vbox,
+                self.sitename_field,
                 settings_button,
             ]
         )
@@ -136,12 +142,12 @@ class UI:
         # Date Widgets
         self.start_date = DatePicker(
             description="Start Date",
-            value=datetime.date(2018, 12, 1),
+            value=datetime.date(2010, 1, 1),
             disabled=False,
         )
         self.end_date = DatePicker(
             description="End Date",
-            value=datetime.date(2019, 3, 1),  # 2019, 1, 1
+            value=datetime.date(2010, 12, 31),  # 2019, 1, 1
             disabled=False,
         )
         date_instr = HTML(value="<b>Pick a date:</b>", layout=Layout(padding="10px"))
@@ -210,14 +216,17 @@ class UI:
         default = "unknown"
         keys = [
             "dates",
+            "sitename",
         ]
         # returns a dict with keys in keys and if a key does not exist in feature its value is default str
         values = common.get_default_dict(default=default, keys=keys, fill_dict=settings)
         return """ 
         <h2>Settings</h2>
         <p>dates: {}</p>
+        <p>sitename: {}</p>
         """.format(
             values["dates"],
+            values["sitename"],
         )
 
     def _create_HTML_widgets(self):
@@ -320,9 +329,11 @@ class UI:
     @debug_view.capture(clear_output=True)
     def save_settings_clicked(self, btn):
         # Save dates selected by user
-        dates = [str(self.start_date.value), str(self.end_date.value)]
+        dates = (str(self.start_date.value), str(self.end_date.value))
+        sitename = self.sitename_field.value.replace(" ", "")
         settings = {
             "dates": dates,
+            "sitename": sitename,
         }
         try:
             self.coastseg_map.save_settings(**settings)
