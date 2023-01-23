@@ -43,16 +43,16 @@ Roadmap / progress
     - [X] 13 class dataset (no data, water, wetlands, tree canopy, shrubland, low veg, barren, structures, impervious (other), impervious (road), tree canopy over impervious surface, tree canopy over impervious road, other)
     - [ ] set of models
     - [ ] zenodo release  
-  - [ ] EnviroAtlas / NAIP / high-res. sat
-    - [X] X class dataset ()
+  - [ ] EnviroAtlas / NAIP 
+    - [X] 13 class dataset (no data, water, wetlands, tree canopy, shrubland, low veg, barren, structures, impervious (other), impervious (road), tree canopy over impervious surface, tree canopy over impervious road, other)
     - [ ] set of models
     - [ ] zenodo release  
   - [ ] OpenEarthMap / aerial / high-res. sat
-    - [X] X class dataset ()
+    - [X] 8 class dataset bareland, rangeland, dev., road, tree, water, ag., building)
     - [ ] set of models
     - [ ] zenodo release  
   - [ ] DeepGlobe / aerial / high-res. sat
-    - [X] X class dataset ()
+    - [X] 7 class dataset (urban, ag., rangeland, forest, water, bare, unknown)
     - [ ] set of models
     - [ ] zenodo release  
 - [ ] Develop codes/docs for selecting model
