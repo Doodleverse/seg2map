@@ -19,12 +19,42 @@ Roadmap / progress
 - [X] Develop codes for downloading NAIP imagery using GEE
 - [ ] Put together a prototype jupyter notebook for web map, bounding box, and image downloads
 - [ ] Create Seg2Map models
-  - [ ] Coast Train
-  - [ ] FloodNet
-  - [ ] Chesapeake Landcover
-  - [ ] EnviroAtlas
-  - [ ] OpenEarthMap
-  - [ ] DeepGlobe
+  - [ ] Coast Train / aerial / high-res. sat
+    - [X] 2 class dataset (water, other)
+    - [ ] set of models
+    - [ ] zenodo release  
+  - [ ] Coast Train / NAIP
+    - [X] 5 class dataset (water, whitewater, sediment, bare terrain, other terrain)
+    - [ ] set of models
+    - [ ] zenodo release  
+  - [ ] Coast Train / NAIP
+    - [X] 8 class dataset (water, whitewater, sediment, bare terrain, marsh veg, terrestrial veg, ag., dev.)
+    - [ ] set of models
+    - [ ] zenodo release  
+  - [ ] FloodNet / UAV
+    - [X] 10 class dataset (Background, Building-flooded, Building-non-flooded, Road-flooded, Road-non-flooded, Water, Tree, Vehicle, Pool, Grass)
+    - [ ] set of models
+    - [ ] zenodo release
+  - [ ] Chesapeake Landcover (CCLC) / NAIP
+    - [X] 7 class dataset (water, tree canopy / forest, low vegetation / field, barren land, impervious (other), impervious (road), no data)
+    - [ ] set of models
+    - [ ] zenodo release  
+  - [ ] Chesapeake Landcover (NLCD) / NAIP
+    - [X] 13 class dataset (no data, water, wetlands, tree canopy, shrubland, low veg, barren, structures, impervious (other), impervious (road), tree canopy over impervious surface, tree canopy over impervious road, other)
+    - [ ] set of models
+    - [ ] zenodo release  
+  - [ ] EnviroAtlas / NAIP / high-res. sat
+    - [X] X class dataset ()
+    - [ ] set of models
+    - [ ] zenodo release  
+  - [ ] OpenEarthMap / aerial / high-res. sat
+    - [X] X class dataset ()
+    - [ ] set of models
+    - [ ] zenodo release  
+  - [ ] DeepGlobe / aerial / high-res. sat
+    - [X] X class dataset ()
+    - [ ] set of models
+    - [ ] zenodo release  
 - [ ] Develop codes/docs for selecting model
 - [ ] Develop codes/docs for applying model to make label imagery
 - [ ] Tool for mosaicing labels
