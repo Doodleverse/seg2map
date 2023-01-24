@@ -42,7 +42,7 @@ from osgeo import gdal
 from time import perf_counter
 
 start = perf_counter()
-with open('original_timer.txt','w') as f:
+with open("original_timer.txt", "w") as f:
     f.write(f"Start Time {start}")
 
 ###=================================================
@@ -61,15 +61,15 @@ nx, ny = 2, 2  # number of columns and rows to split
 site = "hidden_beachs"  # name of the site
 # name of file containing
 # roifile = 'example_singleROI.geojson'
-roifile = r'C:\1_USGS\5_Doodleverse\1_Seg2Map_fork\seg2map\src\seg2map\NAIP\hidden_beach.geojson'
-filename=r'C:\1_USGS\5_Doodleverse\1_Seg2Map_fork\seg2map\src\seg2map\NAIP\hidden_beach.geojson'
+roifile = r"C:\1_USGS\5_Doodleverse\1_Seg2Map_fork\seg2map\src\seg2map\NAIP\hidden_beach.geojson"
+filename = r"C:\1_USGS\5_Doodleverse\1_Seg2Map_fork\seg2map\src\seg2map\NAIP\hidden_beach.geojson"
 # roifile = "multi_sites_tests.geojson"
 ## years of data collection (list of strings)
 # years = ['2006', '2009','2011','2013','2015','2017']
 # years = ['2017'] # not available with example
 # years = ['2015']
 # years = ["2006", "2009", "2011", "2013", "2015", "2017"]
-years=["2009"]
+years = ["2009"]
 ###=================================================
 ############### DOWNLOAD NAIP TILES USING GEEMAP ###
 ###=================================================
@@ -323,6 +323,6 @@ for featurenumber, feature in enumerate(features):
             print("Data not available")
 
 end = perf_counter()
-total_time = end-start
-with open('original_timer.txt','a') as f:
+total_time = end - start
+with open("original_timer.txt", "a") as f:
     f.write(f"\nEnd Time {end}\n Total Time: {total_time}")
