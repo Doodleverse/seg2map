@@ -2,18 +2,16 @@
 import os
 import datetime
 import logging
+from collections import defaultdict
 
 # internal python imports
 from src.seg2map import exception_handler
-from src.seg2map import common
 
 # external python imports
-import ipywidgets
 from IPython.display import display
 from ipyfilechooser import FileChooser
 
 from google.auth import exceptions as google_auth_exceptions
-from ipywidgets import Accordion
 from ipywidgets import Button
 from ipywidgets import ToggleButton
 from ipywidgets import HBox
@@ -65,6 +63,7 @@ class UI:
     debug_view = Output(layout={"border": "1px solid black"})
     # Output widget used to print messages and exceptions created by download progress
     download_view = Output(layout={"border": "1px solid black"})
+    settings_messages = Output(layout={"border": "1px solid black"})
 
     def __init__(self, coastseg_map):
         # save an instance of coastseg_map
@@ -97,10 +96,16 @@ class UI:
         )
         self.clear_debug_button.on_click(self.clear_debug_view)
 
+        # Remove buttons
+        self.clear_downloads_button = Button(
+            description="Clear TextBox", style=self.clear_stlye
+        )
+        self.clear_downloads_button.on_click(self.clear_download_view)
+
         # create the HTML widgets containing the instructions
         self._create_HTML_widgets()
 
-    def get_view_settings_accordion(self) -> Accordion:
+    def get_view_settings(self) -> VBox:
         # update settings button
         update_settings_btn = Button(
             description="Update Settings", style=self.action_style
@@ -109,11 +114,9 @@ class UI:
         self.settings_html = HTML()
         self.settings_html.value = self.get_settings_html(self.coastseg_map.settings)
         view_settings_vbox = VBox([self.settings_html, update_settings_btn])
-        html_settings_accordion = Accordion(children=[view_settings_vbox])
-        html_settings_accordion.set_title(0, "View Settings")
-        return html_settings_accordion
+        return view_settings_vbox
 
-    def get_settings_accordion(self):
+    def get_settings_vbox(self) -> VBox:
         # declare settings widgets
         dates_vbox = self.get_dates_picker()
         self.sitename_field = Text(
@@ -126,17 +129,12 @@ class UI:
         settings_button = Button(description="Save Settings", style=self.action_style)
         settings_button.on_click(self.save_settings_clicked)
 
-        # create settings accordion
+        # create settings vbox
         settings_vbox = VBox(
-            [
-                dates_vbox,
-                self.sitename_field,
-                settings_button,
-            ]
+            [dates_vbox, self.sitename_field, settings_button, UI.settings_messages]
         )
-        settings_accordion = Accordion(children=[settings_vbox])
-        settings_accordion.set_title(0, "Settings")
-        return settings_accordion
+
+        return settings_vbox
 
     def get_dates_picker(self):
         # Date Widgets
@@ -212,14 +210,13 @@ class UI:
         self,
         settings: dict,
     ):
-        # Modifies html of accordion when transect is hovered over
+        # Modifies setttings html
         default = "unknown"
         keys = [
             "dates",
             "sitename",
         ]
-        # returns a dict with keys in keys and if a key does not exist in feature its value is default str
-        values = common.get_default_dict(default=default, keys=keys, fill_dict=settings)
+        values = defaultdict(lambda: "unknown", settings)
         return """ 
         <h2>Settings</h2>
         <p>dates: {}</p>
@@ -258,8 +255,8 @@ class UI:
 
     def create_dashboard(self):
         """creates a dashboard containing all the buttons, instructions and widgets organized together."""
-        # create settings accordion
-        settings_accordion = self.get_settings_accordion()
+        # create settings controls
+        settings_controls = self.get_settings_vbox()
         remove_buttons = self.remove_buttons()
         save_to_file_buttons = self.save_to_file_buttons()
 
@@ -280,17 +277,17 @@ class UI:
             ]
         )
 
-        # view settings accordion
-        html_settings_accordion = self.get_view_settings_accordion()
+        # Static settings HTML used to show currently loaded settings
+        static_settings = self.get_view_settings()
 
-        row_0 = HBox([settings_accordion, html_settings_accordion])
+        row_0 = HBox([settings_controls, static_settings])
         row_1 = HBox([save_vbox, download_vbox])
         # in this row prints are rendered with UI.debug_view
         row_3 = HBox([self.clear_debug_button, UI.debug_view])
         self.error_row = HBox([])
         self.row_4 = HBox([])
         row_5 = HBox([self.coastseg_map.map])
-        row_6 = HBox([UI.download_view])
+        row_6 = HBox([self.clear_downloads_button,UI.download_view])
 
         return display(
             row_0,
@@ -305,7 +302,7 @@ class UI:
     @debug_view.capture(clear_output=True)
     def update_settings_btn_clicked(self, btn):
         UI.debug_view.clear_output(wait=True)
-        # Update settings in view settings accordion
+        # Display the settings currently loaded into coastseg_map
         try:
             self.settings_html.value = self.get_settings_html(
                 self.coastseg_map.settings
@@ -326,15 +323,31 @@ class UI:
             exception_handler.handle_exception(error, self.coastseg_map.warning_box)
         self.coastseg_map.map.default_style = {"cursor": "default"}
 
-    @debug_view.capture(clear_output=True)
+    @settings_messages.capture(clear_output=True)
     def save_settings_clicked(self, btn):
         # Save dates selected by user
-        dates = (str(self.start_date.value), str(self.end_date.value))
+        dates = [str(self.start_date.value), str(self.end_date.value)]
         sitename = self.sitename_field.value.replace(" ", "")
         settings = {
             "dates": dates,
             "sitename": sitename,
         }
+        dates = [datetime.datetime.strptime(_, "%Y-%m-%d") for _ in dates]
+        if dates[1] <= dates[0]:
+            print("Dates are not correct chronological order")
+            print("Settings not saved")
+            return
+        # check if sitename path exists and if it does tell user they need a new name
+        parent_path = os.path.join(os.getcwd(), "data")
+        sitename_path = os.path.join(parent_path, sitename)
+        if os.path.exists(sitename_path):
+            print(
+                f"Sorry this sitename already exists at {sitename_path}\nTry another sitename."
+            )
+            print("Settings not saved")
+            return
+        elif not os.path.exists(sitename_path):
+            print(f"{sitename} will be created at {sitename_path}")
         try:
             self.coastseg_map.save_settings(**settings)
             self.settings_html.value = self.get_settings_html(
@@ -482,4 +495,6 @@ class UI:
 
     def clear_debug_view(self, btn):
         UI.debug_view.clear_output()
+        
+    def clear_download_view(self, btn):
         UI.download_view.clear_output()

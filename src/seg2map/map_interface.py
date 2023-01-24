@@ -1,14 +1,16 @@
 import os
 import json
 import logging
-from typing import Union
 from typing import List
+from collections import defaultdict
+from datetime import datetime
 
 from src.seg2map import common
 from src.seg2map import factory
 from src.seg2map.roi import ROI
 from src.seg2map import exceptions
 from src.seg2map import exception_handler
+from src.seg2map import downloads
 
 import geopandas as gpd
 from ipyleaflet import DrawControl, LayersControl, WidgetControl, GeoJSON
@@ -19,6 +21,7 @@ from ipywidgets import HBox
 from ipywidgets import VBox
 from ipywidgets import HTML
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -26,7 +29,10 @@ class CoastSeg_Map:
     def __init__(self, settings: dict = None):
         self.factory = factory.Factory()
         # settings:  used to select data to download and preprocess settings
-        self.settings = {}
+        self.settings = {
+            "dates": "",
+            "sitename": "",
+        }
         if settings is not None:
             tmp_settings = {**settings, **self.settings}
             self.settings = tmp_settings.copy()
@@ -38,6 +44,8 @@ class CoastSeg_Map:
         self.rois = None
         # ids of rois
         self.ids = []
+        # sitename : name of directory containing all ROI downloads chosen by user
+        self.sitename = ""
         # selected layer name
         self.SELECTED_LAYER_NAME = "selected ROIs"
         # layer that contains ROIs that will be deleted
@@ -61,6 +69,50 @@ class CoastSeg_Map:
         self.warning_box = HBox([])
         self.warning_widget = WidgetControl(widget=self.warning_box, position="topleft")
         self.map.add(self.warning_widget)
+
+    def get_setttings(self)->dict:
+        logger.info(f"settings: {self.settings}")
+        
+        if self.settings['sitename'] == '':
+            raise Exception('No sitename given')
+        
+        dates = self.settings["dates"]
+        if dates == "":
+            raise Exception("No dates given")
+        elif dates != "":
+            dates = [datetime.strptime(_, "%Y-%m-%d") for _ in dates]
+            if dates[1] <= dates[0]:
+                raise Exception("Dates are not correct chronological order")
+        
+        return self.settings
+
+    def download_imagery(self) -> None:
+        # throw error if no ROIs exist
+        exception_handler.check_if_None(self.rois, "ROIs")
+        # if selected set is empty throw an error
+        exception_handler.check_selected_set(self.selected_set)
+        selected_ids = list(self.selected_set)
+        logger.info(f"selected_ids: {selected_ids}")
+
+        # get settings used to download ROIs
+        settings = self.get_setttings()
+        sitename = settings["sitename"]
+        dates = settings["dates"]
+        
+        # create data directory in current working directory to hold all downloads if it doesn't already exist
+        data_path = common.create_subdirectory("data")
+        # create sitename directory within data directory if it doesn't exist
+        site_path = os.path.join(data_path, sitename)
+        if os.path.exists(site_path):
+            raise Exception(f"{sitename} directory already exists at {site_path}")
+        
+        # download all selected ROIs on map to sitename directory
+        print("Download in process")
+        logger.info(
+            f"Download in process.\nsitepath: {site_path}\nselected ids:{selected_ids}"
+        )
+        downloads.run_async_download(site_path, self.rois.gdf, selected_ids, dates)
+        logger.info("Done downloading")
 
     def create_delete_box(self, title: str = None, msg: str = None):
         padding = "0px 0px 0px 5px"  # upper, right, bottom, left
@@ -219,16 +271,6 @@ class CoastSeg_Map:
         self.rois = ROI(rois_gdf=roi_gdf)
         self.load_feature_on_map("rois", gdf=roi_gdf)
 
-    def download_imagery(self) -> None:
-        """downloads selected rois as jpgs
-
-        Raises:
-            Exception: raised if settings is missing
-            Exception: raised if 'dates','sat_list', and 'landsat_collection' are not in settings
-            Exception: raised if no ROIs have been selected
-        """
-        print("Called download imagery")
-
     def load_json_config(self, filepath: str) -> None:
         exception_handler.check_if_None(self.rois)
         json_data = common.read_json_file(filepath)
@@ -312,6 +354,7 @@ class CoastSeg_Map:
                 common.config_to_file(config_json, filepath)
                 # save to config_gdf.geojson
                 common.config_to_file(config_gdf, filepath)
+                print("Saved config files for each ROI")
 
     def save_settings(self, **kwargs):
         """Saves the settings for downloading data in a dictionary
@@ -329,14 +372,7 @@ class CoastSeg_Map:
 
     def update_roi_html(self, feature, **kwargs):
         # Modifies html of accordion when roi is hovered over
-        keys = [
-            "id",
-        ]
-        # returns a dict with provided keys and if a given key does not exist in the feature's properties its value is default str
-        values = common.get_default_dict(
-            default="unknown", keys=keys, fill_dict=feature["properties"]
-        )
-        logger.info(f"ROI feature: {feature}")
+        values = defaultdict(lambda: "unknown", feature["properties"])
         # convert area of ROI to km^2
         roi_area = common.get_area(feature["geometry"]) * 10**-6
         self.accordion.children[
@@ -365,17 +401,13 @@ class CoastSeg_Map:
     def remove_all(self):
         """Remove the bbox, all rois from the map"""
         self.remove_all_rois()
-        self.remove_accordion_html()
-
+        
     def remove_layer_by_name(self, layer_name: str):
         existing_layer = self.map.find_layer(layer_name)
         if existing_layer is not None:
             self.map.remove_layer(existing_layer)
         logger.info(f"Removed layer {layer_name}")
 
-    def remove_accordion_html(self):
-        """Clear the html accordion"""
-        self.accordion.children[0].value = "Hover over a ROI on the map."
 
     def replace_layer_by_name(
         self, layer_name: str, new_layer: GeoJSON, on_hover=None, on_click=None

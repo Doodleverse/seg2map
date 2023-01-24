@@ -31,6 +31,24 @@ from ipywidgets import HTML
 logger = logging.getLogger(__name__)
 
 
+def create_subdirectory(name: str, parent_dir: str = None) -> str:
+    """Returns full path to a directory named name created in the parent directory.
+    If the parent directory is not given then the data directory is created in the current working directory
+
+    Args:
+        parent_dir (str, optional): parent directory to create name directory within. Defaults to None.
+
+    Returns:
+        str: full path to a directory named name
+    """
+    if parent_dir == None:
+        parent_dir = os.getcwd()
+    new_dir = os.path.join(parent_dir, name)
+    if not os.path.exists(new_dir):
+        os.mkdir(new_dir)
+    return new_dir
+
+
 def create_warning_box(title: str = None, msg: str = None):
     padding = "0px 0px 0px 5px"  # upper, right, bottom, left
     # create title
@@ -250,104 +268,12 @@ def config_to_file(config: Union[dict, gpd.GeoDataFrame], file_path: str):
         filename = f"config.json"
         save_path = os.path.abspath(os.path.join(file_path, filename))
         write_to_json(save_path, config)
-        print(f"Saved config json: {filename} \nSaved to {save_path}")
         logger.info(f"Saved config json: {filename} \nSaved to {save_path}")
     elif isinstance(config, gpd.GeoDataFrame):
         filename = f"config_gdf.geojson"
         save_path = os.path.abspath(os.path.join(file_path, filename))
-        print(f"Saved config json: {filename} \nSaved to {save_path}")
         logger.info(f"Saving config gdf:{config} \nSaved to {save_path}")
         config.to_file(save_path, driver="GeoJSON")
-
-
-def get_default_dict(default, keys: list, fill_dict: dict) -> dict:
-    """returns a dictionary with keys each with
-    default value if the key does not exist in fill_dict. If the key exists
-    in fill_dict then the value replaces the default value.
-
-    Args:
-        default (): default value for each key
-        keys (list): keys for dictionary
-        fill_dict (dict): dictionary used to replace default values
-
-    Returns:
-        dict: dict with given keys and default value for each key that didn't exist in fill_dict
-    """
-    values = {}
-    values = values.fromkeys(keys, default)
-    for key in fill_dict.keys():
-        if key in values:
-            values[key] = fill_dict[key]
-    return values
-
-
-def get_transect_points_dict(roi_id: str, feature: gpd.geodataframe) -> dict:
-    """Returns dict of np.arrays of transect start and end points
-    Example
-    {
-        'ROI_1_usa_CA_0289-0055-NA1': array([[-13820440.53165404,   4995568.65036405],
-        [-13820940.93156407,   4995745.1518021 ]]),
-        'ROI_1_usa_CA_0289-0056-NA1': array([[-13820394.24579453,   4995700.97802925],
-        [-13820900.16320004,   4995862.31860808]])
-    }
-    Args:
-        roi_id(str): id of roi that transects intersect
-        feature (gpd.geodataframe): clipped transects within roi
-    Returns:
-        dict: dict of np.arrays of transect start and end points
-        of form {
-            'ROI<roi_id>_<transect_id>': array([[start point],
-                        [end point]]),}
-    """
-    features = []
-    # Use explode to break multilinestrings in linestrings
-    feature_exploded = feature.explode()
-    # For each linestring portion of feature convert to lat,lon tuples
-    lat_lng = feature_exploded.apply(
-        lambda row: {
-            "ROI_"
-            + str(roi_id)
-            + "_"
-            + str(row.id): np.array(np.array(row.geometry).tolist())
-        },
-        axis=1,
-    )
-    features = list(lat_lng)
-    new_dict = {}
-    for item in list(features):
-        new_dict = {**new_dict, **item}
-    return new_dict
-
-
-def get_cross_distance_df(
-    extracted_shorelines: dict, cross_distance_transects: dict
-) -> pd.DataFrame:
-    transects_csv = {}
-    # copy dates from extracted shoreline
-    transects_csv["dates"] = extracted_shorelines["dates"]
-    # add cross distances for each transect for roi with roi_id
-    transects_csv = {**transects_csv, **cross_distance_transects}
-    return pd.DataFrame(transects_csv)
-
-
-def make_coastsat_compatible(feature: gpd.geodataframe) -> list:
-    """Return the feature as an np.array in the form:
-        [([lat,lon],[lat,lon],[lat,lon]),([lat,lon],[lat,lon],[lat,lon])...])
-    Args:
-        feature (gpd.geodataframe): clipped portion of shoreline within a roi
-    Returns:
-        list: shorelines in form:
-            [([lat,lon],[lat,lon],[lat,lon]),([lat,lon],[lat,lon],[lat,lon])...])
-    """
-    features = []
-    # Use explode to break multilinestrings in linestrings
-    feature_exploded = feature.explode()
-    # For each linestring portion of feature convert to lat,lon tuples
-    lat_lng = feature_exploded.apply(
-        lambda row: tuple(np.array(row.geometry).tolist()), axis=1
-    )
-    features = list(lat_lng)
-    return features
 
 
 def create_json_config(inputs: dict, settings: dict) -> dict:
@@ -432,145 +358,6 @@ def read_gpd_file(filename: str) -> gpd.GeoDataFrame:
     else:
         raise FileNotFoundError
     return gpd_data
-
-
-def get_jpgs_from_data() -> str:
-    """Returns the folder where all jpgs were copied from the data folder in coastseg.
-    This is where the model will save the computed segmentations."""
-    # Data folder location
-    src_path = os.path.abspath(os.getcwd() + os.sep + "data")
-    if os.path.exists(src_path):
-        rename_jpgs(src_path)
-        # Create a new folder to hold all the data
-        location = os.getcwd()
-        name = "segmentation_data"
-        # new folder "segmentation_data_datetime"
-        new_folder = mk_new_dir(name, location)
-        # create subdirectories for each image type
-        file_types = ["RGB", "SWIR", "NIR"]
-        for file_type in file_types:
-            new_path = os.path.join(new_folder, file_type)
-            if not os.path.exists(new_path):
-                os.mkdir(new_path)
-            glob_str = (
-                src_path
-                + str(os.sep + "**" + os.sep) * 2
-                + "preprocessed"
-                + os.sep
-                + file_type
-                + os.sep
-                + "*.jpg"
-            )
-            copy_files_to_dst(src_path, new_path, glob_str)
-            RGB_path = os.path.join(new_folder, "RGB")
-        return RGB_path
-    else:
-        print("ERROR: Cannot find the data directory in coastseg")
-        raise Exception("ERROR: Cannot find the data directory in coastseg")
-
-
-def rename_jpgs(src_path: str) -> None:
-    """Renames all the jpgs in the data directory in coastseg
-    Args:
-        src_path (str): full path to the data directory in coastseg
-    """
-    files_renamed = False
-    for folder in os.listdir(src_path):
-        folder_path = src_path + os.sep + folder
-        # Split the folder name at the first _
-        folder_id = folder.split("_")[0]
-        folder_path = folder_path + os.sep + "jpg_files" + os.sep + "preprocessed"
-        jpgs = glob.glob1(folder_path + os.sep, "*jpg")
-        # Append folder id to basename of jpg if not already there
-        for jpg in jpgs:
-            if folder_id not in jpg:
-                files_renamed = True
-                base, ext = os.path.splitext(jpg)
-                new_name = folder_path + os.sep + base + "_" + folder_id + ext
-                old_name = folder_path + os.sep + jpg
-                os.rename(old_name, new_name)
-        if files_renamed:
-            print(f"Renamed files in {src_path} ")
-
-
-def do_rois_filepaths_exist(roi_settings: dict, roi_ids: list) -> bool:
-    """Returns true if all rois have filepaths that exist
-    Args:
-        roi_settings (dict): settings of all rois on map
-        roi_ids (list): ids of rois selected on map
-    Returns:
-        bool: True if all rois have filepaths that exist
-    """
-    # by default assume all filepaths exist
-    does_filepath_exist = True
-    for roi_id in roi_ids:
-        filepath = str(roi_settings[roi_id]["filepath"])
-        if not os.path.exists(filepath):
-            # if filepath does not exist stop checking
-            does_filepath_exist = False
-            logger.info(f"filepath did not exist{filepath}")
-            print("Some ROIs contained filepaths that did not exist")
-            break
-    logger.info(f"{does_filepath_exist} All rois filepaths exist")
-    return does_filepath_exist
-
-
-def do_rois_have_sitenames(roi_settings: dict, roi_ids: list) -> bool:
-    """Returns true if all rois have "sitename" with non-empty string
-    Args:
-        roi_settings (dict): settings of all rois on map
-        roi_ids (list): ids of rois selected on map
-
-    Returns:
-        bool: True if all rois have "sitename" with non-empty string
-    """
-    # by default assume all sitenames are not empty
-    is_sitename_not_empty = True
-    for roi_id in roi_ids:
-        if roi_settings[roi_id]["sitename"] == "":
-            # if sitename is empty means user has not downloaded ROI data
-            is_sitename_not_empty = False
-            break
-    logger.info(f"{is_sitename_not_empty} All rois have non-empty sitenames")
-    return is_sitename_not_empty
-
-
-def were_rois_downloaded(roi_settings: dict, roi_ids: list) -> bool:
-    """Returns true if rois were downloaded before. False if they have not
-    Uses 'sitename' key for each roi to determine if roi was downloaded.
-    And checks if filepath were roi is saved is valid
-    If each roi's 'sitename' is not empty string returns true
-    Args:
-        roi_settings (dict): settings of all rois on map
-        roi_ids (list): ids of rois selected on map
-
-    Returns:
-        bool: True means rois were downloaded before
-    """
-    # by default assume rois were downloaded
-    is_downloaded = True
-    if roi_settings is None:
-        # if rois do not have roi_settings this means they were never downloaded
-        is_downloaded = False
-    elif roi_settings == {}:
-        # if rois do not have roi_settings this means they were never downloaded
-        is_downloaded = False
-    elif roi_settings != {}:
-        all_sitenames_exist = do_rois_have_sitenames(roi_settings, roi_ids)
-        all_filepaths_exist = do_rois_filepaths_exist(roi_settings, roi_ids)
-        is_downloaded = all_sitenames_exist and all_filepaths_exist
-    # print correct message depending on whether ROIs were downloaded
-    if is_downloaded:
-        print("Located previously downloaded ROI data.")
-        logger.info(f"Located previously downloaded ROI data.")
-    elif is_downloaded == False:
-        print(
-            "Did not locate previously downloaded ROI data. To download the imagery for your ROIs click Download ROI"
-        )
-        logger.info(
-            f"Did not locate previously downloaded ROI data. To download the imagery for your ROIs click Download ROI"
-        )
-    return is_downloaded
 
 
 def create_roi_settings(

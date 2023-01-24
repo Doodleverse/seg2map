@@ -11,6 +11,20 @@ class Object_Not_Found(Exception):
 
     def __str__(self):
         return f"{self.msg}"
+    
+class No_Images_Available(Exception):
+    """No_Images_Available: raised when nothing can be downloaded
+    Args:
+        Exception: Inherits from the base exception class
+    """
+
+    def __init__(self, feature: str, message=""):
+        self.msg = f"No {feature.lower()} found on the map.\n{message}"
+        self.feature = feature
+        super().__init__(self.msg)
+
+    def __str__(self):
+        return f"{self.msg}"
 
 
 class Id_Not_Found(Exception):
