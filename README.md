@@ -19,36 +19,37 @@ Seg2Map will take geospatial imagery from [s2m_engine](https://github.com/Doodle
 - [X] Develop codes for downloading NAIP imagery using GEE
 - [ ] Put together a prototype jupyter notebook for web map, bounding box, and image downloads
 - [ ] Create Seg2Map models
-  - [ ] Coast Train / aerial / high-res. sat
-    - [X] 2 class dataset (water, other)
+  - [ ] [Coast Train](https://coasttrain.github.io/CoastTrain/) / aerial / high-res. sat
+    - [X] 2 class [dataset](https://coasttrain.github.io/CoastTrain/docs/Version%201:%20March%202022/data) (water, other)
     - [ ] set of models
     - [ ] zenodo release  
-  - [ ] Coast Train / NAIP
-    - [X] 5 class dataset (water, whitewater, sediment, bare terrain, other terrain)
-    - [ ] set of models
-    - [ ] zenodo release  
-  - [ ] Coast Train / NAIP
-    - [X] 8 class dataset (water, whitewater, sediment, bare terrain, marsh veg, terrestrial veg, ag., dev.)
-    - [ ] set of models
-    - [ ] zenodo release  
-  - [ ] FloodNet / UAV
-    - [X] 10 class dataset (Background, Building-flooded, Building-non-flooded, Road-flooded, Road-non-flooded, Water, Tree, Vehicle, Pool, Grass)
-    - [ ] set of models
-    - [ ] zenodo release
-  - [ ] Chesapeake Landcover (CCLC) / NAIP
-    - [X] 7 class dataset (water, tree canopy / forest, low vegetation / field, barren land, impervious (other), impervious (road), no data)
+  - [ ] [Coast Train](https://coasttrain.github.io/CoastTrain/) / NAIP
+    - [X] 5 class [dataset](https://coasttrain.github.io/CoastTrain/docs/Version%201:%20March%202022/data) (water, whitewater, sediment, bare terrain, other terrain)
+    - [X] 8 class [dataset](https://coasttrain.github.io/CoastTrain/docs/Version%201:%20March%202022/data) (water, whitewater, sediment, bare terrain, marsh veg, terrestrial veg, ag., dev.)
+    - [ ] set of 5-class models
+    - [ ] zenodo release of 5-class models
+    - [ ] set of 8-class models
+    - [ ] zenodo release of 8-class models
+  - [ ] [FloodNet](https://github.com/BinaLab/FloodNet-Challenge-EARTHVISION2021) / UAV
+    - [X] 10 class [dataset](https://github.com/BinaLab/FloodNet-Challenge-EARTHVISION2021) (Background, Building-flooded, Building-non-flooded, Road-flooded, Road-non-flooded, Water, Tree, Vehicle, Pool, Grass)
+    - [X] set of models for 768 x 512 imagery
+    - [X] zenodo release for 768 x 512 models [zenodo page](https://10.5281/zenodo.7566810)
+    - [ ] set of models for 1024 x 768 imagery
+    - [ ] zenodo release for 1024 x 768 models [zenodo page](https://10.5281/zenodo.7566797)
+  - [ ] [Chesapeake Landcover](https://lila.science/datasets/chesapeakelandcover) (CCLC) / NAIP
+    - [X] 7 class [dataset](https://lila.science/datasets/chesapeakelandcover) (water, tree canopy / forest, low vegetation / field, barren land, impervious (other), impervious (road), no data)
     - [ ] set of models
     - [ ] zenodo release  
   - [ ] [EnviroAtlas](https://zenodo.org/record/6268150#.Y9H3vxzMLRZ) / NAIP 
     - [X] 6 class dataset (water, impervious, barren, trees, herbaceous, shrubland)
     - [ ] set of models
     - [ ] zenodo release  
-  - [ ] OpenEarthMap / aerial / high-res. sat
-    - [X] 9 class dataset (bareland, rangeland, dev., road, tree, water, ag., building, nodata)
+  - [ ] [OpenEarthMap](https://open-earth-map.org/) / aerial / high-res. sat
+    - [X] 9 class [dataset](https://zenodo.org/record/7223446#.Y9IN2BzMLRY) (bareland, rangeland, dev., road, tree, water, ag., building, nodata)
     - [ ] set of models
     - [ ] zenodo release  
-  - [ ] DeepGlobe / aerial / high-res. sat
-    - [X] 7 class dataset (urban, ag., rangeland, forest, water, bare, unknown)
+  - [ ] [DeepGlobe](https://arxiv.org/abs/1805.06561) / aerial / high-res. sat
+    - [X] 7 class [dataset](https://www.kaggle.com/datasets/balraj98/deepglobe-land-cover-classification-dataset) (urban, ag., rangeland, forest, water, bare, unknown)
     - [ ] set of models
     - [ ] zenodo release  
 - [ ] Develop codes/docs for selecting model
@@ -61,19 +62,19 @@ Seg2Map will take geospatial imagery from [s2m_engine](https://github.com/Doodle
 ## References
 
 ### Chesapeake Landcover
-* https://lila.science/datasets/chesapeakelandcover
-*
+* [webpage](https://lila.science/datasets/chesapeakelandcover)
 
 ### Coast Train
-* paper https://www.nature.com/articles/s41597-023-01929-2
-* website https://coasttrain.github.io/CoastTrain/
-* data https://cmgds.marine.usgs.gov/data-releases/datarelease/10.5066-P91NP87I/
-* preprint https://eartharxiv.org/repository/view/3560/ 
+* [paper](https://www.nature.com/articles/s41597-023-01929-2)
+* [website](https://coasttrain.github.io/CoastTrain/)
+* [data](https://cmgds.marine.usgs.gov/data-releases/datarelease/10.5066-P91NP87I/)
+* [preprint](https://eartharxiv.org/repository/view/3560/)
 
 ### DeepGlobe
 * DeepGlobe https://arxiv.org/abs/1805.06561 
 * DeepGlobe http://deepglobe.org/challenge.html
 * DEEPGLOBE - 2018 Satellite Challange http://deepglobe.org/index.html
+* data https://www.kaggle.com/datasets/balraj98/deepglobe-land-cover-classification-dataset 
 
 ### EnviroAtlas
 * [EnviroAtlas dataset](https://zenodo.org/record/6268150#.Y9H3vxzMLRZ)
@@ -82,13 +83,14 @@ Seg2Map will take geospatial imagery from [s2m_engine](https://github.com/Doodle
 * This dataset was organized to accompany the 2022 paper, [Resolving label uncertainty with implicit generative models](https://openreview.net/forum?id=AEa_UepnMDX). More details can be found [here](https://github.com/estherrolf/qr_for_landcover)
 
 ### FloodNet
-* FloodNet https://github.com/BinaLab/FloodNet-Challenge-EARTHVISION2021 
-* http://www.classic.grss-ieee.org/earthvision2021/challenge.html 
+* [FloodNet dataset](https://github.com/BinaLab/FloodNet-Challenge-EARTHVISION2021)
+* [challenge](http://www.classic.grss-ieee.org/earthvision2021/challenge.html)
+* [paper](https://arxiv.org/abs/2012.02951)
 
 ### OpenEarthMap
-* Open Earth Map https://open-earth-map.org/
-* Open Earth Map https://zenodo.org/record/7223446#.Y7zQLxXMK3A 
-* Open Earth Map https://arxiv.org/abs/2210.10732 
+* [website](https://open-earth-map.org/)
+* [data](https://zenodo.org/record/7223446#.Y7zQLxXMK3A)
+* [paper](https://arxiv.org/abs/2210.10732)
 
 ### Notes
-* NLCD https://www.mrlc.gov/data/legends/national-land-cover-database-class-legend-and-description
+* [NLCD classes](https://www.mrlc.gov/data/legends/national-land-cover-database-class-legend-and-description)
