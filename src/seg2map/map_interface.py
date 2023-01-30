@@ -70,12 +70,12 @@ class CoastSeg_Map:
         self.warning_widget = WidgetControl(widget=self.warning_box, position="topleft")
         self.map.add(self.warning_widget)
 
-    def get_setttings(self)->dict:
+    def get_setttings(self) -> dict:
         logger.info(f"settings: {self.settings}")
-        
-        if self.settings['sitename'] == '':
-            raise Exception('No sitename given')
-        
+
+        if self.settings["sitename"] == "":
+            raise Exception("No sitename given")
+
         dates = self.settings["dates"]
         if dates == "":
             raise Exception("No dates given")
@@ -83,7 +83,7 @@ class CoastSeg_Map:
             dates = [datetime.strptime(_, "%Y-%m-%d") for _ in dates]
             if dates[1] <= dates[0]:
                 raise Exception("Dates are not correct chronological order")
-        
+
         return self.settings
 
     def download_imagery(self) -> None:
@@ -98,20 +98,24 @@ class CoastSeg_Map:
         settings = self.get_setttings()
         sitename = settings["sitename"]
         dates = settings["dates"]
-        
+        # choose whether to download multiband, singleband or both
+        download_bands = "multiband"
+
         # create data directory in current working directory to hold all downloads if it doesn't already exist
         data_path = common.create_subdirectory("data")
         # create sitename directory within data directory if it doesn't exist
         site_path = os.path.join(data_path, sitename)
         if os.path.exists(site_path):
             raise Exception(f"{sitename} directory already exists at {site_path}")
-        
+
         # download all selected ROIs on map to sitename directory
         print("Download in process")
         logger.info(
             f"Download in process.\nsitepath: {site_path}\nselected ids:{selected_ids}"
         )
-        downloads.run_async_download(site_path, self.rois.gdf, selected_ids, dates)
+        downloads.run_async_download(
+            site_path, self.rois.gdf, selected_ids, dates, download_bands
+        )
         logger.info("Done downloading")
 
     def create_delete_box(self, title: str = None, msg: str = None):
@@ -401,13 +405,12 @@ class CoastSeg_Map:
     def remove_all(self):
         """Remove the bbox, all rois from the map"""
         self.remove_all_rois()
-        
+
     def remove_layer_by_name(self, layer_name: str):
         existing_layer = self.map.find_layer(layer_name)
         if existing_layer is not None:
             self.map.remove_layer(existing_layer)
         logger.info(f"Removed layer {layer_name}")
-
 
     def replace_layer_by_name(
         self, layer_name: str, new_layer: GeoJSON, on_hover=None, on_click=None

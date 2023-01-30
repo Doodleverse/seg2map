@@ -92,13 +92,13 @@ class UI:
 
         # Remove buttons
         self.clear_debug_button = Button(
-            description="Clear TextBox", style=self.clear_stlye
+            description="Clear Messages", style=self.clear_stlye
         )
         self.clear_debug_button.on_click(self.clear_debug_view)
 
         # Remove buttons
         self.clear_downloads_button = Button(
-            description="Clear TextBox", style=self.clear_stlye
+            description="Clear Downloads", style=self.clear_stlye
         )
         self.clear_downloads_button.on_click(self.clear_download_view)
 
@@ -287,7 +287,7 @@ class UI:
         self.error_row = HBox([])
         self.row_4 = HBox([])
         row_5 = HBox([self.coastseg_map.map])
-        row_6 = HBox([self.clear_downloads_button,UI.download_view])
+        row_6 = HBox([self.clear_downloads_button, UI.download_view])
 
         return display(
             row_0,
@@ -495,6 +495,6 @@ class UI:
 
     def clear_debug_view(self, btn):
         UI.debug_view.clear_output()
-        
+
     def clear_download_view(self, btn):
         UI.download_view.clear_output()

@@ -11,7 +11,8 @@ class Object_Not_Found(Exception):
 
     def __str__(self):
         return f"{self.msg}"
-    
+
+
 class No_Images_Available(Exception):
     """No_Images_Available: raised when nothing can be downloaded
     Args:

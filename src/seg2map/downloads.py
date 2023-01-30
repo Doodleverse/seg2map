@@ -5,7 +5,7 @@ import os, json, shutil
 from glob import glob
 import concurrent.futures
 
-from src.seg2map import  exceptions
+from src.seg2map import exceptions
 
 from typing import List, Tuple
 import platform
@@ -24,8 +24,11 @@ from shapely.ops import split
 import ee
 from osgeo import gdal
 
-
 logger = logging.getLogger(__name__)
+
+# Initialize a semaphore object with a limit of 10
+# GEE allows for 10 concurrent requests at once
+limit = asyncio.Semaphore(11)
 
 
 def get_num_splitters(gdf: gpd.GeoDataFrame) -> int:
@@ -95,11 +98,6 @@ def splitPolygon(polygon: gpd.GeoDataFrame, num_splitters: int) -> MultiPolygon:
     return result
 
 
-# Initialize a semaphore object with a limit of 10
-# GEE allows for 10 concurrent requests at once
-limit = asyncio.Semaphore(11)
-
-
 def remove_zip(path):
     # Get a list of all the zipped files in the directory
     zipped_files = [
@@ -167,18 +165,34 @@ def create_dir(dir_path: str, raise_error=True) -> str:
     return dir_path
 
 
-# download tiles functions must create all filepaths first
-# then fetch all can be called
-
-
 async def async_download_tile(
-    session,
-    polygon,
+    session: aiohttp.ClientSession,
+    polygon: List[set],
     tile_id: str,
     filepath: str,
     filename: str,
     filePerBand: bool,
-):
+) -> None:
+    """
+    Download a single tile of an Earth Engine image and save it to a zip directory.
+
+    This function uses the Earth Engine API to crop the image to a specified polygon and download it to a zip directory with the specified filename. The number of concurrent downloads is limited to 10.
+
+    Parameters:
+
+    session (aiohttp.ClientSession): An instance of aiohttp session to make the download request.
+    polygon (List[set]): A list of latitude and longitude coordinates that define the region to crop the image to.
+    tile_id (str): The ID of the Earth Engine image to download.
+    filepath (str): The path of the directory to save the downloaded zip file to.
+    filename (str): The name of the zip file to be saved.
+    filePerBand (bool): Whether to save each band of the image in a separate file or as a single file.
+    Returns:
+    None
+    """
+    # polygon: [(-124.152405, 40.889966), (-124.152405, 40.89853), (-124.146226, 40.89853), (-124.146226, 40.889966), (-124.152405, 40.889966)]
+    logger.info(polygon)
+    logger.info(type(polygon))
+    logger.info(type(session))
     # No more than 10 concurrent workers will be able to make
     # get request at the same time.
     async with limit:
@@ -237,29 +251,33 @@ def copy_multiband_tifs(roi_path: str, multiband_path: str):
 
 
 def merge_tifs(multiband_path: str, roi_path: str) -> str:
-    # run gdal to merge into big tiff
-    # ensure path to ROI exists
+    # Check if path to ROI directory exists
     if not os.path.exists(roi_path):
-        raise FileNotFoundError(roi_path)
-    # ensure path containing all the tifs exists
+        raise FileNotFoundError(f"{roi_path} not found.")
+    # Check if path to multiband exists
     if not os.path.exists(multiband_path):
-        raise FileNotFoundError(multiband_path)
+        raise FileNotFoundError(f"{multiband_path} not found.")
     try:
-        ## create vrt
+
+        # Create a list of tif files in multiband_path
+        tif_files = glob(os.path.join(multiband_path, "*.tif"))
+        if not tif_files:
+            raise FileNotFoundError(f"No tif files found in {multiband_path}.")
+
+        vrt_path = os.path.join(roi_path, "merged_multispectral.vrt")
+        logger.info(f"vrt_path: {vrt_path}")
+
+        ## create vrt(virtual world format) file
         vrtoptions = gdal.BuildVRTOptions(
             resampleAlg="average", srcNodata=0, VRTNodata=0
         )
-        files = glob(multiband_path + os.sep + "*.tif")
-        # full path to save vrt (virtual world format) file
-        vrt_path = os.path.join(roi_path, "merged_multispectral.vrt")
-        logger.info(f"outfile for vrt: {vrt_path}")
-        # creates a virtual world file using all the tifs
-        # if vrt file already exists it is overwritten
-        virtual_dataset = gdal.BuildVRT(vrt_path, files, options=vrtoptions)
+        # creates a virtual world file using all the tifs and overwrites any pre-existing .vrt
+        virtual_dataset = gdal.BuildVRT(vrt_path, tif_files, options=vrtoptions)
         # flushing the cache causes the vrt file to be created
         virtual_dataset.FlushCache()
         # reset the dataset object
         virtual_dataset = None
+
         # create geotiff (.tiff) from merged vrt file
         virtual_dataset = gdal.Translate(
             vrt_path.replace(".vrt", ".tif"),
@@ -268,8 +286,8 @@ def merge_tifs(multiband_path: str, roi_path: str) -> str:
         )
         virtual_dataset.FlushCache()
         virtual_dataset = None
+
         # convert .vrt to .jpg file
-        # uses gdal to create a world file
         virtual_dataset = gdal.Translate(
             vrt_path.replace(".vrt", ".jpg"),
             creationOptions=["WORLDFILE=YES", "QUALITY=100"],
@@ -285,169 +303,320 @@ def merge_tifs(multiband_path: str, roi_path: str) -> str:
 
 
 def mk_filepaths(tiles_info: List[dict]):
+    """
+    Copy multiband TIF files from a source folder to a destination folder.
+
+    This function uses the glob module to search for multiband TIF files in the subfolders of a source folder, and then uses the shutil module to copy each file to a destination folder. The name of the file in the destination folder is set to the name of the file in the source folder.
+
+    Parameters:
+
+    roi_path (str): The path of the source folder to search for multiband TIF files.
+    multiband_path (str): The path of the destination folder to copy the multiband TIF files to.
+    Returns:
+    None"""
     filepaths = [tile_info["filepath"] for tile_info in tiles_info]
     for filepath in filepaths:
         create_dir(filepath, raise_error=False)
 
 
-async def fetch_all(session, imgs_dict: List[dict], sum_imgs: int):
-    # creates task for each tile to be downloaded and waits for tasks to complete
+def create_tasks(
+    session: aiohttp.ClientSession,
+    polygon: List[tuple],
+    tile_id: str,
+    filepath: str,
+    multiband_filepath: str,
+    filenames: dict,
+    file_id: str,
+    download_bands: str,
+) -> list:
+    """
+
+    creates a list of tasks that are used to download the data.
+
+    Parameters
+    ----------
+    session : aiohttp.ClientSession
+        The aiohttp.ClientSession object that handles the connection with the
+        api.
+    polygon : List[tuple] coordinates of the polygon in lat/lon
+    ex: [(1,2),(3,4)(4,3),(3,3),(1,2)]
+    tile_id : str
+        GEE id of the tile
+        ex: 'USDA/NAIP/DOQQ/m_4012407_se_10_1_20100612'
+    filepath : str
+        full path to tile directory that data will be saved to
+    multiband_filepath : str
+        The path to a directory will save multiband files
+    filenames : dict
+        A dictionary of filenames:
+        'singleband': name of singleband files
+        'multiband': name of multiband files
+    file_id : str
+        name that file will be saved as based on tile_id
+    download_bands : str
+        type of imagery to download
+        must be one of the following strings "multiband","singleband", or "both"
+
+    Returns
+    -------
+    tasks : list
+        A list of tasks that are used to download the data.
+
+    """
     tasks = []
-    img_count = 0
-    for counter, tile_dict in enumerate(imgs_dict):
-        # make two requests for each image
-        polygon = tile_dict["polygon"]
-        filepath = os.path.abspath(tile_dict["filepath"])
-        # ROI directory containing all tile subdirectories
-        parent_dir = os.path.dirname(filepath)
-        multiband_filepath = os.path.join(parent_dir, "multiband")
-        for tile_id in tile_dict["ids"]:
-            file_id = tile_id.replace("/", "_")
-            multi_filename = "multiband" + str(counter) + "_" + file_id
-            filename = os.path.basename(filepath) + "_" + file_id
-            # schedule to download multiband
-            task = asyncio.create_task(
-                async_download_tile(
-                    session,
-                    polygon,
-                    tile_id,
-                    multiband_filepath,
-                    filename=multi_filename,
-                    filePerBand=False,
-                )
+    if download_bands == "multiband" or download_bands == "both":
+        task = asyncio.create_task(
+            async_download_tile(
+                session,
+                polygon,
+                tile_id,
+                multiband_filepath,
+                filename=filenames["multiband"] + "_" + file_id,
+                filePerBand=False,
             )
-            tasks.append(task)
-            # schedule to download each band as a single file
-            task = asyncio.create_task(
-                async_download_tile(
-                    session,
-                    polygon,
-                    tile_id,
-                    filepath,
-                    filename=filename,
-                    filePerBand=True,
-                )
-            )
-            tasks.append(task)
-            img_count += 1
-    # show a progress bar of all the requests in progress
-    await tqdm.asyncio.tqdm.gather(*tasks, position=0, desc=f"All Downloads")
-
-
-async def async_download_tiles(tiles_info: List[dict], sum_imgs: int):
-    async with aiohttp.ClientSession() as session:
-        await fetch_all(session, tiles_info, sum_imgs)
-
-
-def run_async_download(tiles_info: List[dict]):
-    if platform.system() == "Windows":
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    # apply a nested loop to jupyter's event loop for async downloading
-    # nest_asyncio.apply()
-    # get nested running loop and wait for async downloads to complete
-    loop = asyncio.get_running_loop()
-    result = loop.run_until_complete(async_download_tiles(tiles_info))
-
-
-def get_tiles_info(
-    tile_coords: list, dates: Tuple[str], roi_path: str, gee_collection: str
-) -> List[dict]:
-    sum_imgs = 0
-    all_img_ids = []
-    img_dicts = []
-    for counter, tile in enumerate(tile_coords):
-        collection = ee.ImageCollection(gee_collection)
-        polys = ee.Geometry.Polygon(tile)
-        # get portion of collection within tile and date range
-        collection = collection.filterBounds(polys)
-        collection = collection.filterDate(dates[0], dates[1]).sort(
-            "system:time_start", True
         )
-        # make a list of all the image names in the collection
-        im_list = collection.getInfo().get("features")
-        ids = [obj["id"] for obj in im_list]
-        all_img_ids.extend(ids)
-        # for each tile put the geometry, tile directory path, and filenames to download in a dict
-        image_dict = {
-            "polygon": tile,
-            "ids": ids,
-            "filepath": roi_path + os.sep + "tile" + str(counter),
-        }
-        img_dicts.append(image_dict)
-        logger.info(f"\n Images available for tile {counter} : {len(im_list)}")
-        sum_imgs += len(im_list)
-        
-    logger.info(f"\nTotal Images available across all tiles {sum_imgs}")
-    return img_dicts, sum_imgs
+        tasks.append(task)
+    if download_bands == "singleband" or download_bands == "both":
+        task = asyncio.create_task(
+            async_download_tile(
+                session,
+                polygon,
+                tile_id,
+                filepath,
+                filename=filenames["singleband"] + "_" + file_id,
+                filePerBand=False,
+            )
+        )
+        tasks.append(task)
+    return tasks
 
 
-def get_tile_coords(num_splitters: int, gpd_data):
-    if num_splitters == 0:
-        split_polygon = Polygon(gpd_data["geometry"].iloc[0])
-        tile_coords = [list(split_polygon.exterior.coords)]
-    elif num_splitters > 0:
-        # split ROI into rectangles of 1km^2 area (or less)
-        split_polygon = splitPolygon(gpd_data, num_splitters)
-        tile_coords = [list(part.exterior.coords) for part in split_polygon.geoms]
-    return tile_coords
+async def async_download_tiles(tiles_info: List[dict], download_bands: str) -> None:
+    """
+        Downloads all tiles asynchronously and displays a tqdm for the download progress.
+        downloads the tiles in separate directories depending on whether single band or multiband
+        was requested
+    Args:
+        tiles_info (List[dict]): list information for each tile
+                each list entry contains a dictionary
+                {
+                    polygon (list[tuple]): coordinates of the polygon in lat/lon
+                        ex: [(1,2),(3,4)(4,3),(3,3),(1,2)]
+                    filepath (str): full path to tile directory
+                        ex: C:/users/seg2map/data/sitename/tile0
+                    ids: (list[str]): GEE ids of each file
+                        ex: ['USDA/NAIP/DOQQ/m_4012407_se_10_1_20100612']
+
+                }
+        download_bands (str): type of imagery to download
+            must be one of the following strings "multiband","singleband", or "both
+    """
+    async with aiohttp.ClientSession() as session:
+        # creates task for each tile to be downloaded and waits for tasks to complete
+        tasks = []
+        for counter, tile_dict in enumerate(tiles_info):
+
+            polygon = tile_dict["polygon"]
+            filepath = os.path.abspath(tile_dict["filepath"])
+            parent_dir = os.path.dirname(filepath)
+            multiband_filepath = os.path.join(parent_dir, "multiband")
+            filenames = {
+                "multiband": "multiband" + str(counter),
+                "singleband": os.path.basename(filepath),
+            }
+            for tile_id in tile_dict["ids"]:
+                file_id = tile_id.replace("/", "_")
+                tasks.extend(
+                    create_tasks(
+                        session,
+                        polygon,
+                        tile_id,
+                        filepath,
+                        multiband_filepath,
+                        filenames,
+                        file_id,
+                        download_bands,
+                    )
+                )
+        # show a progress bar of all the requests in progress
+        await tqdm.asyncio.tqdm.gather(*tasks, position=0, desc=f"All Downloads")
 
 
-async def download_ROI(
-    download_path: str, gpd_data: gpd.GeoDataFrame, roi_id: str, dates: Tuple[str]
-) -> None:
-    gee_collection = "USDA/NAIP/DOQQ"
-    # get number of splitters need to split ROI into rectangles of 1km^2 area (or less)
-    num_splitters = get_num_splitters(gpd_data)
-    logger.info("Splitting ROI into {num_splitters}x{num_splitters} tiles")
-    # split ROI into rectangles of 1km^2 area (or less)
-    tile_coords = get_tile_coords(num_splitters, gpd_data)
-    logger.info(f"tile_coords: {tile_coords}")
-
-    # name of ROI folder to contain all downloaded data
-    roi_name = "ID_" + roi_id + "_dates_" + dates[0] + "_to_" + dates[1]
-    roi_path = os.path.join(download_path, roi_name)
-    # create directory to hold all multiband files
-    multiband_path = os.path.join(roi_path, "multiband")
-    create_dir(multiband_path, raise_error=False)
-    # get list of tiles info needed to downloaded all tiles
-    tiles_info, sum_imgs = get_tiles_info(tile_coords, dates, roi_path, gee_collection)
-    if sum_imgs == 0:
-        raise exceptions.No_Images_Available(f"No images found within these dates : {dates}")
-    print(f"Total Images to Download: {sum_imgs*2}")
-    logger.info(f"Total Images to Download: {sum_imgs*2}")
-    # make directories for all tiles within ROI
-    mk_filepaths(tiles_info)
-    # download the tiles that compose the ROI in parallel
-    await async_download_tiles(tiles_info, sum_imgs)
-    # unzip all the downloaded data
-    unzip_data(roi_path)
-    # merge all multiband tifs into a single jpg
-    merge_tifs(multiband_path=multiband_path, roi_path=roi_path)
-
-
-async def download_rois(
-    download_path: str, roi_gdf: gpd.GeoDataFrame, ids: List[str], dates: Tuple[str]
-) -> None:
-    no_imgs_counter=0
-    for roi_id in ids:
-        # download selected ROI
-        try:
-            gpd_data = roi_gdf[roi_gdf["id"] == roi_id]
-            await download_ROI(download_path, gpd_data, roi_id, dates)
-        except exceptions.No_Images_Available as error:
-            no_imgs_counter+=1
-    # if every ROI has no images available raise error        
-    if no_imgs_counter == len(ids):
-        raise exceptions.No_Images_Available(f"No images found within these dates : {dates}")
-    
 # call asyncio to run download_ROIs
 def run_async_download(
-    download_path: str, roi_gdf: gpd.GeoDataFrame, ids: List[str], dates: Tuple[str]
-):
+    download_path: str,
+    roi_gdf: gpd.GeoDataFrame,
+    ids: List[str],
+    dates: Tuple[str],
+    download_bands: str,
+) -> None:
+    """creates a nested loop that's used to asynchronously download imagery and waits for all the imagery to download
+    Args:
+        download_path (str): full path to directory to download imagery to
+        roi_gdf (gpd.GeoDataFrame): geodataframe of ROIs on the map
+        ids (List[str]): ids of ROIs to download imagery for
+        dates (Tuple[str]): start and end dates
+        download_bands (str): type of imagery to download
+            must be one of the following strings "multiband","singleband", or "both"
+    """
     if platform.system() == "Windows":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     # apply a nested loop to jupyter's event loop for async downloading
     nest_asyncio.apply()
     # get nested running loop and wait for async downloads to complete
     loop = asyncio.get_running_loop()
-    result = loop.run_until_complete(download_rois(download_path, roi_gdf, ids, dates))
+    loop.run_until_complete(
+        download_rois(download_path, roi_gdf, ids, dates, download_bands)
+    )
+
+
+def get_tiles_info(
+    tile_coords: list, dates: Tuple[str], roi_path: str, gee_collection: str
+) -> List[dict]:
+    """
+    Get information about images within the specified tile coordinates, date range, and image collection.
+    The information includes the image IDs, file path, and polygon geometry of each tile.
+
+    Parameters:
+    tile_coords (List[List[Tuple[float]]]): A list of tile coordinates, where each tile coordinate is a list of
+                                            (latitude, longitude) tuples that define the polygon of the tile.
+    dates (Tuple[str]): A tuple of two strings representing the start and end dates for the image collection.
+    roi_path (str): The path to the directory where the images will be saved.
+    gee_collection (str): The name of the image collection on Google Earth Engine.
+
+    Returns:
+    List[dict]: A list of dictionaries, where each dictionary contains information about a single tile, including the
+                polygon geometry, the IDs of the images within the tile, and the file path to the directory where the
+                images will be saved.
+    """
+    sum_imgs = 0
+    image_ids = []
+    image_dicts = []
+    for counter, tile in enumerate(tile_coords):
+        collection = ee.ImageCollection(gee_collection)
+        polygon = ee.Geometry.Polygon(tile)
+        # Filter the collection to get only the images within the tile and date range
+        filtered_collection = (
+            collection.filterBounds(polygon)
+            .filterDate(*dates)
+            .sort("system:time_start", True)
+        )
+        # Get a list of all the image names in the filtered collection
+        image_list = filtered_collection.getInfo().get("features")
+        ids = [obj["id"] for obj in image_list]
+        image_ids.extend(ids)
+        # Create a dictionary for each tile with the information about the images to be downloaded
+        image_dict = {
+            "polygon": tile,
+            "ids": ids,
+            "filepath": os.path.join(roi_path, f"tile{str(counter)}"),
+        }
+        image_dicts.append(image_dict)
+        logger.info(f"\n Images available for tile {counter} : {len(image_list)}")
+        sum_imgs += len(image_list)
+
+    logger.info(f"\nTotal Images available across all tiles {sum_imgs}")
+    return image_dicts, sum_imgs
+
+
+def get_tile_coords(num_splitters: int, roi_gdf: gpd.GeoDataFrame) -> list[list[list]]:
+    """
+    Given the number of splitters and a GeoDataFrame,Splits an ROI geodataframe into tiles of 1km^2 area (or less),
+    and returns a list of lists of tile coordinates.
+
+    Args:
+        num_splitters (int): The number of splitters to divide the ROI into.
+        gpd_data (gpd.GeoDataFrame): The GeoDataFrame containing the ROI geometry.
+
+    Returns:
+        list[list[list[float]]]: A list of lists of tile coordinates, where each inner list represents the coordinates of one tile.
+        The tile coordinates are in [lat,lon] format.
+    """
+    if num_splitters == 0:
+        split_polygon = Polygon(roi_gdf["geometry"].iloc[0])
+        tile_coords = [list(split_polygon.exterior.coords)]
+    elif num_splitters > 0:
+        # split ROI into rectangles of 1km^2 area (or less)
+        split_polygon = splitPolygon(roi_gdf, num_splitters)
+        tile_coords = [list(part.exterior.coords) for part in split_polygon.geoms]
+    return tile_coords
+
+
+async def download_ROI(
+    download_path: str,
+    roi_gdf: gpd.GeoDataFrame,
+    roi_id: str,
+    dates: Tuple[str],
+    download_bands: str,
+) -> None:
+    """
+    Download the imagery data for a given region of interest (ROI) within specified dates. The ROI is split into smaller rectangles to minimize the amount of data that needs to be downloaded. The downloaded data is unzipped and merged into a single multiband image.
+
+    Parameters:
+        download_path (str): The path where the downloaded data should be saved.
+        roi_gdf (gpd.GeoDataFrame): The geographical data for the ROI.
+        roi_id (str): A string identifier for the ROI.
+        dates (Tuple[str]): A tuple of two strings representing the start and end date of the imagery data to be downloaded.
+        download_bands (str): A string indicating which bands should be downloaded, either "multiband", "singleband", or "both".
+
+    Returns:
+        None
+    """
+    gee_collection = "USDA/NAIP/DOQQ"
+
+    # get number of splitters need to split ROI into rectangles of 1km^2 area (or less)
+    num_splitters = get_num_splitters(roi_gdf)
+    logger.info("Splitting ROI into {num_splitters}x{num_splitters} tiles")
+
+    # split ROI into rectangles of 1km^2 area (or less)
+    tile_coords = get_tile_coords(num_splitters, roi_gdf)
+    logger.info(f"tile_coords: {tile_coords}")
+
+    # name of ROI folder to contain all downloaded data
+    roi_name = f"ID_{roi_id}_dates_{dates[0]}_to_{dates[1]}"
+    roi_path = os.path.join(download_path, roi_name)
+    # create directory to hold all multiband files
+    multiband_path = os.path.join(roi_path, "multiband")
+    create_dir(multiband_path, raise_error=False)
+    # Get list of tile info needed for download
+    tiles_info, sum_imgs = get_tiles_info(tile_coords, dates, roi_path, gee_collection)
+
+    if sum_imgs == 0:
+        raise exceptions.No_Images_Available(
+            f"No images found within these dates : {dates}"
+        )
+    # if both single band and multiband imagery will be downloaded then double number images
+    sum_imgs *= 2 if download_bands == "both" else 1
+    print(f"Total Images to Download: {sum_imgs}")
+    logger.info(f"Total Images to Download: {sum_imgs}")
+
+    # make directories for all tiles within ROI
+    mk_filepaths(tiles_info)
+    # download ROI tiles concurrently
+    await async_download_tiles(tiles_info, download_bands)
+    # Download tiles and unzip data
+    unzip_data(roi_path)
+    # merge all multiband tifs into a single jpg
+    merge_tifs(multiband_path=multiband_path, roi_path=roi_path)
+
+
+async def download_rois(
+    download_path: str,
+    roi_gdf: gpd.GeoDataFrame,
+    ids: List[str],
+    dates: Tuple[str],
+    download_bands: str,
+) -> None:
+    no_imgs_counter = 0
+    for roi_id in ids:
+        # download selected ROI
+        try:
+            gpd_data = roi_gdf[roi_gdf["id"] == roi_id]
+            await download_ROI(download_path, gpd_data, roi_id, dates, download_bands)
+        except exceptions.No_Images_Available as error:
+            no_imgs_counter += 1
+    # if every ROI has no images available raise error
+    if no_imgs_counter == len(ids):
+        raise exceptions.No_Images_Available(
+            f"No images found within these dates : {dates}"
+        )
