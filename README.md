@@ -42,13 +42,13 @@ We welcome collaboration! Please use our [Discussions](https://github.com/Doodle
 - [ ] Create Seg2Map models
   - [ ] [Coast Train](https://coasttrain.github.io/CoastTrain/) / aerial / high-res. sat
     - [X] 2 class [dataset](https://coasttrain.github.io/CoastTrain/docs/Version%201:%20March%202022/data) (water, other)
-    - [ ] set of models
-    - [ ] zenodo release for 768x768 imagery [zenodo page](https://doi.org/10.5281/zenodo.7574784) 
+    - [X] set of models
+    - [X] zenodo release for 768x768 imagery [zenodo page](https://doi.org/10.5281/zenodo.7574784) 
   - [ ] [Coast Train](https://coasttrain.github.io/CoastTrain/) / NAIP
     - [X] 5 class [dataset](https://coasttrain.github.io/CoastTrain/docs/Version%201:%20March%202022/data) (water, whitewater, sediment, bare terrain, other terrain)
     - [X] 8 class [dataset](https://coasttrain.github.io/CoastTrain/docs/Version%201:%20March%202022/data) (water, whitewater, sediment, bare terrain, marsh veg, terrestrial veg, ag., dev.)
-    - [ ] set of 5-class models
-    - [ ] zenodo release of 5-class models for 768x768 imagery [zenodo page](https://doi.org/10.5281/zenodo.7566992)   
+    - [X] set of 5-class models
+    - [X] zenodo release of 5-class models for 768x768 imagery [zenodo page](https://doi.org/10.5281/zenodo.7566992)   
     - [ ] set of 8-class models
     - [ ] zenodo release of 8-class models for 768x768 imagery [zenodo page](https://doi.org/10.5281/zenodo.7570583)   
   - [ ] [FloodNet](https://github.com/BinaLab/FloodNet-Challenge-EARTHVISION2021) / UAV
@@ -95,8 +95,8 @@ We welcome collaboration! Please use our [Discussions](https://github.com/Doodle
 * [website](https://coasttrain.github.io/CoastTrain/)
 * [data](https://cmgds.marine.usgs.gov/data-releases/datarelease/10.5066-P91NP87I/)
 * [preprint](https://eartharxiv.org/repository/view/3560/)
-* Zenodo model release, 2-class (768x768): 
-* Zenodo model release, 5-class (768x768): 
+* Zenodo model release, 2-class (768x768): Buscombe, Daniel. (2023). Doodleverse/Segmentation Zoo/Seg2Map Res-UNet models for CoastTrain water/other segmentation of RGB 768x768 orthomosaic images (v1.0) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.7574784
+* Zenodo model release, 5-class (768x768): Buscombe, Daniel. (2023). Doodleverse/Segmentation Zoo/Seg2Map Res-UNet models for CoastTrain/5-class segmentation of RGB 768x768 NAIP images (v1.0) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.7566992
 * Zenodo model release, 8-class (768x768): 
 
 ### DeepGlobe
