@@ -98,7 +98,7 @@ class CoastSeg_Map:
         settings = self.get_setttings()
         sitename = settings["sitename"]
         dates = settings["dates"]
-        # choose whether to download multiband, singleband or both
+        # choose to download "multiband", "singleband" or "both"
         download_bands = "multiband"
 
         # create data directory in current working directory to hold all downloads if it doesn't already exist
@@ -116,6 +116,8 @@ class CoastSeg_Map:
         downloads.run_async_download(
             site_path, self.rois.gdf, selected_ids, dates, download_bands
         )
+        # delete empty directories
+        common.delete_empty_dirs(site_path)
         logger.info("Done downloading")
 
     def create_delete_box(self, title: str = None, msg: str = None):
@@ -303,16 +305,13 @@ class CoastSeg_Map:
             Exception: raised if selected_layer is missing
         """
         exception_handler.config_check_if_none(self.settings, "settings")
-        # settings must contain keys in subset
-        subset = set(["dates", "sat_list", "landsat_collection"])
-        superset = set(list(self.settings.keys()))
-        exception_handler.check_if_subset(subset, superset, "settings")
         exception_handler.config_check_if_none(self.rois, "ROIs")
         # selected_layer must contain selected ROI
         selected_layer = self.map.find_layer(self.SELECTED_LAYER_NAME)
         exception_handler.check_empty_roi_layer(selected_layer)
-        logger.info(f"self.rois.roi_settings: {self.rois.roi_settings}")
-        if self.rois.roi_settings == {}:
+        logger.info(f"self.rois.get_settings(): {self.rois.get_settings()}")
+
+        if self.rois.get_settings() == {}:
             if filepath is None:
                 filepath = os.path.abspath(os.getcwd())
             roi_settings = common.create_roi_settings(
@@ -321,7 +320,7 @@ class CoastSeg_Map:
             # Save download settings dictionary to instance of ROI
             self.rois.set_roi_settings(roi_settings)
         # create dictionary to be saved to config.json
-        config_json = common.create_json_config(self.rois.roi_settings, self.settings)
+        config_json = common.create_json_config(self.rois.get_settings(), self.settings)
         logger.info(f"config_json: {config_json} ")
         # get currently selected rois selected
         roi_ids = config_json["roi_ids"]

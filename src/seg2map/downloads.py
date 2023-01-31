@@ -6,6 +6,7 @@ from glob import glob
 import concurrent.futures
 
 from src.seg2map import exceptions
+from src.seg2map import common
 
 from typing import List, Tuple
 import platform
@@ -98,7 +99,7 @@ def splitPolygon(polygon: gpd.GeoDataFrame, num_splitters: int) -> MultiPolygon:
     return result
 
 
-def remove_zip(path):
+def remove_zip(path) -> None:
     # Get a list of all the zipped files in the directory
     zipped_files = [
         os.path.join(path, f) for f in os.listdir(path) if f.endswith(".zip")
@@ -108,7 +109,7 @@ def remove_zip(path):
         os.remove(zipped_file)
 
 
-def unzip(path):
+def unzip(path) -> None:
     # Get a list of all the zipped files in the directory
     zipped_files = [
         os.path.join(path, f) for f in os.listdir(path) if f.endswith(".zip")
@@ -139,14 +140,13 @@ def remove_zip_files(paths):
         concurrent.futures.wait(futures)
 
 
-def get_subdirs(parent_dir):
+def get_subdirs(parent_dir: str):
     # Get a list of all the subdirectories in the parent directory
-    subdirs = [
-        os.path.join(parent_dir, d)
-        for d in os.listdir(parent_dir)
-        if os.path.isdir(os.path.join(parent_dir, d))
-    ]
-    return subdirs
+    subdirectories = []
+    for root, dirs, files in os.walk(parent_dir):
+        for d in dirs:
+            subdirectories.append(os.path.join(root, d))
+    return subdirectories
 
 
 def unzip_data(parent_dir: str):
@@ -189,10 +189,6 @@ async def async_download_tile(
     Returns:
     None
     """
-    # polygon: [(-124.152405, 40.889966), (-124.152405, 40.89853), (-124.146226, 40.89853), (-124.146226, 40.889966), (-124.152405, 40.889966)]
-    logger.info(polygon)
-    logger.info(type(polygon))
-    logger.info(type(session))
     # No more than 10 concurrent workers will be able to make
     # get request at the same time.
     async with limit:
@@ -426,13 +422,18 @@ async def async_download_tiles(tiles_info: List[dict], download_bands: str) -> N
             }
             for tile_id in tile_dict["ids"]:
                 file_id = tile_id.replace("/", "_")
+                year_str = file_id.split("_")[-1][:4]
+                logger.info(f"year_str: {year_str}")
+                # full path to year directory within multiband dir eg. ./multiband/2012
+                year_filepath = os.path.join(multiband_filepath, year_str)
+                logger.info(f"year_filepath: {year_filepath}")
                 tasks.extend(
                     create_tasks(
                         session,
                         polygon,
                         tile_id,
                         filepath,
-                        multiband_filepath,
+                        year_filepath,
                         filenames,
                         file_id,
                         download_bands,
@@ -578,6 +579,13 @@ async def download_ROI(
     # create directory to hold all multiband files
     multiband_path = os.path.join(roi_path, "multiband")
     create_dir(multiband_path, raise_error=False)
+
+    # create subdirectories for each year
+    start_date = dates[0].split("-")[0]
+    end_date = dates[1].split("-")[0]
+    logger.info(f"start_date : {start_date } end_date : {end_date }")
+    common.create_year_directories(int(start_date), int(end_date), multiband_path)
+
     # Get list of tile info needed for download
     tiles_info, sum_imgs = get_tiles_info(tile_coords, dates, roi_path, gee_collection)
 
@@ -596,8 +604,12 @@ async def download_ROI(
     await async_download_tiles(tiles_info, download_bands)
     # Download tiles and unzip data
     unzip_data(roi_path)
-    # merge all multiband tifs into a single jpg
-    merge_tifs(multiband_path=multiband_path, roi_path=roi_path)
+    # delete any directories that were empty
+    common.delete_empty_dirs(multiband_path)
+    # create multispectral tif for each year only if multiband imagery was downloaded
+    if download_bands != "singleband":
+        for subdir in os.scandir(multiband_path):
+            merge_tifs(multiband_path=subdir.path, roi_path=subdir.path)
 
 
 async def download_rois(

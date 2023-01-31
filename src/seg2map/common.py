@@ -31,6 +31,51 @@ from ipywidgets import HTML
 logger = logging.getLogger(__name__)
 
 
+def get_subdirs(parent_dir: str):
+    # Get a list of all the subdirectories in the parent directory
+    subdirectories = []
+    for root, dirs, files in os.walk(parent_dir):
+        for d in dirs:
+            subdirectories.append(os.path.join(root, d))
+    return subdirectories
+
+
+def delete_empty_dirs(dir_path: str):
+    """
+    Recursively delete all empty directories within a directory.
+
+    Parameters
+    ----------
+    dir_path : str
+        The path to the directory where the search for empty directories begins.
+
+    Returns
+    -------
+    None
+    """
+    subdirs = get_subdirs(dir_path)
+    remove_dirs = [subdir for subdir in subdirs if len(os.listdir(subdir)) == 0]
+    for remove_dir in remove_dirs:
+        os.removedirs(remove_dir)
+
+
+def create_year_directories(start_year: int, end_year: int, base_path: str) -> None:
+    """Create directories for each year in between a given start and end year.
+
+    Args:
+        start_year (int): The start year.
+        end_year (int): The end year.
+        base_path (str): The base path for the directories.
+
+    Returns:
+        None
+    """
+    for year in range(start_year, end_year + 1):
+        year_path = os.path.join(base_path, str(year))
+        if not os.path.exists(year_path):
+            os.makedirs(year_path)
+
+
 def create_subdirectory(name: str, parent_dir: str = None) -> str:
     """Returns full path to a directory named name created in the parent directory.
     If the parent directory is not given then the data directory is created in the current working directory
@@ -362,78 +407,45 @@ def read_gpd_file(filename: str) -> gpd.GeoDataFrame:
 
 def create_roi_settings(
     settings: dict,
-    selected_rois: dict,
+    selected_rois: set,
     filepath: str,
-    date_str: str = "",
 ) -> dict:
     """returns a dict of settings for each roi with roi id as the key.
     Example:
     "2": {
             "dates": ["2018-12-01", "2019-03-01"],
-            "sat_list": ["L8"],
-            "sitename": "ID_2_datetime10-19-22__04_00_34",
+            "sitename": "sitename1",
             "filepath": "C:\\CoastSeg\\data",
             "roi_id": "2",
-            "polygon": [
-                [
-                    [-124.16930255115336, 40.8665390046026],
-                    [-124.16950858759564, 40.878247531017706],
-                    [-124.15408259844114, 40.878402930533994],
-                    [-124.1538792781699, 40.8666943403763],
-                    [-124.16930255115336, 40.8665390046026],
-                ]
-            ],
-            "landsat_collection": "C01",
         },
-        "3": {
+    "3": {
             "dates": ["2018-12-01", "2019-03-01"],
-            "sat_list": ["L8"],
-            "sitename": "ID_3_datetime10-19-22__04_00_34",
+            "sitename": "sitename1",
             "filepath": "C:\\CoastSeg\\data",
             "roi_id": "3",
-            "polygon": [
-                [
-                    [-124.16950858759564, 40.878247531017706],
-                    [-124.16971474532464, 40.88995603272874],
-                    [-124.15428603840094, 40.890111496009816],
-                    [-124.15408259844114, 40.878402930533994],
-                    [-124.16950858759564, 40.878247531017706],
-                ]
-            ],
-            "landsat_collection": "C01",
         },
 
     Args:
-        settings (dict): settings from coastseg_map.
-        Must have keys ["sat_list","landsat_collection","dates"]
-        selected_rois (dict): geojson dict of rois selected
-        filepath (str): file path to directory to hold roi data
-        date_str (str, optional): datetime formatted string. Defaults to "".
+        settings (dict): currently loaded settings for the map
+        selected_rois (set): set of selected ROI ids
+        filepath (str): full path to data directory
 
     Returns:
         dict: settings for each roi with roi id as the key
     """
 
     roi_settings = {}
-    sat_list = settings["sat_list"]
-    landsat_collection = settings["landsat_collection"]
+    sitename = settings["sitename"]
     dates = settings["dates"]
     for roi in selected_rois["features"]:
         roi_id = str(roi["properties"]["id"])
-        sitename = (
-            "" if date_str == "" else "ID_" + str(roi_id) + "_datetime" + date_str
-        )
-        polygon = roi["geometry"]["coordinates"]
-        inputs_dict = {
+        roi_info = {
             "dates": dates,
-            "sat_list": sat_list,
             "roi_id": roi_id,
-            "polygon": polygon,
-            "landsat_collection": landsat_collection,
             "sitename": sitename,
             "filepath": filepath,
         }
-        roi_settings[roi_id] = inputs_dict
+        roi_settings[roi_id] = roi_info
     return roi_settings
 
 
