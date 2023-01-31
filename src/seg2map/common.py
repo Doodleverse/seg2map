@@ -9,7 +9,7 @@ import logging
 from typing import Union
 
 # Internal dependencies imports
-from src.seg2map import exceptions
+from src.seg2map import exception_handler
 
 from tqdm.auto import tqdm
 import requests
@@ -284,19 +284,43 @@ def read_json_file(filename: str) -> dict:
     return data
 
 
-def find_config_json(search_path) -> bool:
+def get_ids_with_invalid_area(
+    geometry: gpd.GeoDataFrame, max_area: float = 98000000, min_area: float = 0
+) -> set:
+    if isinstance(geometry, gpd.GeoDataFrame):
+        geometry = json.loads(geometry.to_json())
+    if isinstance(geometry, dict):
+        if "features" in geometry.keys():
+            rows_drop = set()
+            for i, feature in enumerate(geometry["features"]):
+                roi_area = get_area(feature["geometry"])
+                if roi_area >= max_area or roi_area <= min_area:
+                    rows_drop.add(i)
+            return rows_drop
+    else:
+        raise TypeError("Must be geodataframe")
+
+
+def find_config_json(search_path: str) -> str:
+    """Searches for a `config.json` file in the specified directory
+
+    Args:
+        search_path (str): the directory path to search for the `config.json` file
+
+    Returns:
+        str: the file path to the `config.json` file
+
+    Raises:
+        FileNotFoundError: if a `config.json` file is not found in the specified directory
+    """
     logger.info(f"searching directory for config.json: {search_path}")
+    config_regex = re.compile(r"config.*\.json", re.IGNORECASE)
 
-    def use_regex(input_text):
-        pattern = re.compile(r"config.*\.json", re.IGNORECASE)
-        if pattern.match(input_text) is not None:
-            return True
-        return False
-
-    for item in os.listdir(search_path):
-        if use_regex(item):
-            logger.info(f"{item} matched regex")
-            return item
+    for file in os.listdir(search_path):
+        if config_regex.match(file):
+            logger.info(f"{file} matched regex")
+            file_path = os.path.join(search_path, file)
+            return file_path
 
     raise FileNotFoundError(f"config.json file was not found at {search_path}")
 
@@ -321,16 +345,14 @@ def config_to_file(config: Union[dict, gpd.GeoDataFrame], file_path: str):
         config.to_file(save_path, driver="GeoJSON")
 
 
-def create_json_config(inputs: dict, settings: dict) -> dict:
+def create_json_config(input_settings: dict, settings: dict) -> dict:
     """returns config dictionary with the settings, currently selected_roi ids, and
-    each of the inputs specified by roi id.
+    each of the input_settings specified by roi id.
     sample config:
     {
         'roi_ids': ['17','20']
         'settings':{ 'dates': ['2018-12-01', '2019-03-01'],
-                    'cloud_thresh': 0.5,
-                    'dist_clouds': 300,
-                    'output_epsg': 3857,}
+                    'sitename':'sitename1'}
         '17':{
             'sat_list': ['L8'],
             'landsat_collection': 'C01',
@@ -348,13 +370,13 @@ def create_json_config(inputs: dict, settings: dict) -> dict:
     }
 
     Args:
-        inputs (dict): json style dictionary with roi ids at the keys with inputs as values
+        input_settings (dict): json style dictionary with roi ids at the keys with input_settings as values
         settings (dict):  json style dictionary containing map settings
     Returns:
         dict: json style dictionary, config
     """
-    roi_ids = list(inputs.keys())
-    config = {**inputs}
+    roi_ids = list(input_settings.keys())
+    config = {**input_settings}
     config["roi_ids"] = roi_ids
     config["settings"] = settings
     return config
@@ -407,14 +429,15 @@ def read_gpd_file(filename: str) -> gpd.GeoDataFrame:
 
 def create_roi_settings(
     settings: dict,
-    selected_rois: set,
+    selected_ids: set,
     filepath: str,
+    date_str: str,
 ) -> dict:
     """returns a dict of settings for each roi with roi id as the key.
     Example:
     "2": {
             "dates": ["2018-12-01", "2019-03-01"],
-            "sitename": "sitename1",
+            "sitename": "roi",
             "filepath": "C:\\CoastSeg\\data",
             "roi_id": "2",
         },
@@ -427,9 +450,9 @@ def create_roi_settings(
 
     Args:
         settings (dict): currently loaded settings for the map
-        selected_rois (set): set of selected ROI ids
+        selected_ids (set): set of selected ROI ids
         filepath (str): full path to data directory
-
+        date (str): datetime formatted string
     Returns:
         dict: settings for each roi with roi id as the key
     """
@@ -437,16 +460,37 @@ def create_roi_settings(
     roi_settings = {}
     sitename = settings["sitename"]
     dates = settings["dates"]
-    for roi in selected_rois["features"]:
-        roi_id = str(roi["properties"]["id"])
+    for roi_id in list(selected_ids):
+        roi_name = f"ID_{roi_id}_dateime{date_str}"
         roi_info = {
             "dates": dates,
             "roi_id": roi_id,
+            "roi_name": roi_name,
             "sitename": sitename,
             "filepath": filepath,
         }
         roi_settings[roi_id] = roi_info
     return roi_settings
+
+
+def get_site_path(settings: dict) -> str:
+    """
+    Create a subdirectory with the name `settings["sitename"]` within a "data" directory in the current working
+    directory to hold all downloads. If the subdirectory already exists, raise an error.
+
+    Args:
+    - settings: A dictionary containing the key `"sitename"`, which specifies the name of the subdirectory to be created.
+
+    Returns:
+    - The absolute file path of the newly created subdirectory.
+    """
+    # create data directory in current working directory to hold all downloads if it doesn't already exist
+    data_path = create_subdirectory("data")
+    # create sitename directory if it doesn't already exist
+    site_path = os.path.join(data_path, settings["sitename"])
+    # exception_handler.check_path_already_exists(site_path, settings["sitename"])
+    os.makedirs(site_path)
+    return site_path
 
 
 def generate_datestring() -> str:

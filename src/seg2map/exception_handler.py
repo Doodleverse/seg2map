@@ -1,4 +1,5 @@
 # standard python imports
+import os
 import logging
 import traceback
 from typing import Union
@@ -87,6 +88,16 @@ def check_if_None(feature, feature_type: str = "", message: str = ""):
             message = SETTINGS_NOT_FOUND
         logger.error(f"{feature_type} is None")
         raise exceptions.Object_Not_Found(feature_type, message)
+
+
+def check_path_already_exists(full_path: str, dir_name=""):
+    if os.path.exists(full_path):
+        msg = (
+            f"Directory already exists at {full_path}"
+            if dir_name == ""
+            else f"{dir_name} directory already exists at {full_path}"
+        )
+        raise Exception(msg)
 
 
 def check_empty_roi_layer(layer):
