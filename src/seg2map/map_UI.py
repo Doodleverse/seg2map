@@ -126,12 +126,20 @@ class UI:
             disabled=False,
         )
 
+        img_type_picker = self.get_image_types_picker()
+
         settings_button = Button(description="Save Settings", style=self.action_style)
         settings_button.on_click(self.save_settings_clicked)
 
         # create settings vbox
         settings_vbox = VBox(
-            [dates_vbox, self.sitename_field, settings_button, UI.settings_messages]
+            [
+                dates_vbox,
+                self.sitename_field,
+                img_type_picker,
+                settings_button,
+                UI.settings_messages,
+            ]
         )
 
         return settings_vbox
@@ -152,6 +160,20 @@ class UI:
         dates_box = HBox([self.start_date, self.end_date])
         dates_vbox = VBox([date_instr, dates_box])
         return dates_vbox
+
+    def get_image_types_picker(self) -> VBox:
+        image_types = ["multiband", "singleband", "both"]
+        self.img_type_radio = RadioButtons(
+            options=image_types,
+            value=image_types[0],
+            description="",
+            disabled=False,
+        )
+        instr = HTML(
+            value="<b>Pick type of imagery:</b>", layout=Layout(padding="10px")
+        )
+        img_type_vbox = HBox([instr, self.img_type_radio])
+        return img_type_vbox
 
     def save_to_file_buttons(self):
         # save to file buttons
@@ -215,15 +237,18 @@ class UI:
         keys = [
             "dates",
             "sitename",
+            "download_bands",
         ]
         values = defaultdict(lambda: "unknown", settings)
         return """ 
         <h2>Settings</h2>
         <p>dates: {}</p>
         <p>sitename: {}</p>
+        <p>download_bands: {}</p>
         """.format(
             values["dates"],
             values["sitename"],
+            values["download_bands"],
         )
 
     def _create_HTML_widgets(self):
@@ -326,12 +351,10 @@ class UI:
     @settings_messages.capture(clear_output=True)
     def save_settings_clicked(self, btn):
         # Save dates selected by user
+        image_type = str(self.img_type_radio.value)
         dates = [str(self.start_date.value), str(self.end_date.value)]
         sitename = self.sitename_field.value.replace(" ", "")
-        settings = {
-            "dates": dates,
-            "sitename": sitename,
-        }
+        settings = {"dates": dates, "sitename": sitename, "download_bands": image_type}
         dates = [datetime.datetime.strptime(_, "%Y-%m-%d") for _ in dates]
         if dates[1] <= dates[0]:
             print("Dates are not correct chronological order")
@@ -414,7 +437,9 @@ class UI:
     @debug_view.capture(clear_output=True)
     def on_save_config_clicked(self, button):
         try:
+            print("Save config clicked")
             self.coastseg_map.save_config()
+            print("Done!")
         except Exception as error:
             # renders error message as a box on map
             exception_handler.handle_exception(error, self.coastseg_map.warning_box)

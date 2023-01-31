@@ -86,7 +86,21 @@ class CoastSeg_Map:
 
         return self.settings
 
-    def download_imagery(self) -> None:
+    def download_imagery(self, download_bands: str = "multiband") -> None:
+        """Download imagery for the selected ROIs on the map.
+
+        Args:
+            download_bands (str): The type of imagery to download. Defaults to "multiband".
+            Possible options: "multiband", "singleband" or "both"
+
+        Raises:
+            exceptions.Object_Not_Found: If no ROIs exist.
+            Exception: If the sitename in settings already exists.
+
+        This function checks for the existence of ROIs and selected sets, gets the settings used to download the ROIs,
+        creates a directory to store the downloads, downloads the selected ROIs to the directory, and deletes any empty
+        directories. Finally, it saves the configuration.
+        """
         # throw error if no ROIs exist
         exception_handler.check_if_None(self.rois, "ROIs")
         # if selected set is empty throw an error
@@ -96,28 +110,20 @@ class CoastSeg_Map:
 
         # get settings used to download ROIs
         settings = self.get_setttings()
-        sitename = settings["sitename"]
-        dates = settings["dates"]
-        # choose to download "multiband", "singleband" or "both"
-        download_bands = "multiband"
-
-        # create data directory in current working directory to hold all downloads if it doesn't already exist
-        data_path = common.create_subdirectory("data")
-        # create sitename directory within data directory if it doesn't exist
-        site_path = os.path.join(data_path, sitename)
-        if os.path.exists(site_path):
-            raise Exception(f"{sitename} directory already exists at {site_path}")
-
-        # download all selected ROIs on map to sitename directory
-        print("Download in process")
+        # create directory named sitename within data directory in current working directory to hold all downloads
+        site_path = common.get_site_path(settings)
         logger.info(
             f"Download in process.\nsitepath: {site_path}\nselected ids:{selected_ids}"
         )
+
+        # download all selected ROIs on map to sitename directory
+        print("Download in process")
         downloads.run_async_download(
-            site_path, self.rois.gdf, selected_ids, dates, download_bands
+            site_path, self.rois.gdf, selected_ids, settings["dates"], download_bands
         )
         # delete empty directories
         common.delete_empty_dirs(site_path)
+        self.save_config()
         logger.info("Done downloading")
 
     def create_delete_box(self, title: str = None, msg: str = None):
@@ -231,8 +237,7 @@ class CoastSeg_Map:
         # path to directory to search for config_gdf.json file
         search_path = os.path.dirname(os.path.realpath(filepath))
         # create path to config.json file in search_path directory
-        config_file = common.find_config_json(search_path)
-        config_path = os.path.join(search_path, config_file)
+        config_path = common.find_config_json(search_path)
         logger.info(f"Loaded json config file from {config_path}")
         # load settings from config.json file
         self.load_json_config(config_path)
@@ -262,96 +267,98 @@ class CoastSeg_Map:
         logger.info(f"Dropping columns from ROI: {columns_to_drop}")
         roi_gdf.drop(columns_to_drop, axis=1, inplace=True)
         logger.info(f"roi_gdf: {roi_gdf}")
-        # Extract bbox from gdf
-        bbox_gdf = gdf[gdf["type"] == "bbox"].copy()
-        columns_to_drop = list(set(bbox_gdf.columns) - set(["geometry"]))
-        logger.info(f"Dropping columns from bbox: {columns_to_drop}")
-        bbox_gdf.drop(columns_to_drop, axis=1, inplace=True)
-        logger.info(f"bbox_gdf: {bbox_gdf}")
         # delete the original gdf read in from config geojson file
         del gdf
         # Create ROI object from roi_gdf
-        exception_handler.check_if_gdf_empty(
-            roi_gdf, "ROIs", "Cannot load empty ROIs onto map"
-        )
-        self.rois = ROI(rois_gdf=roi_gdf)
+        self.rois = ROI(rectangle=roi_gdf)
         self.load_feature_on_map("rois", gdf=roi_gdf)
 
     def load_json_config(self, filepath: str) -> None:
+        """
+        Load configuration data from a JSON file and update the object's settings and ROI settings.
+
+        Parameters:
+        filepath (str): The path to the JSON file containing the configuration data.
+
+        Raises:
+        FileNotFoundError: If the file at `filepath` cannot be found.
+        Exception: If `self.rois` is None.
+
+        """
         exception_handler.check_if_None(self.rois)
         json_data = common.read_json_file(filepath)
         # replace coastseg_map.settings with settings from config file
         self.settings = json_data["settings"]
         logger.info(f"Loaded settings from file: {self.settings}")
-        # replace roi_settings for each ROI with contents of json_data
-        roi_settings = {}
-        for roi_id in json_data["roi_ids"]:
-            roi_settings[str(roi_id)] = json_data[roi_id]
-        # Save input dictionaries for all ROIs
-        self.rois.roi_settings = roi_settings
-        logger.info(f"roi_settings: {roi_settings}")
+        # replace roi_settings for each ROI with contents of config.json
+        self.rois.roi_settings = {
+            str(roi_id): json_data[roi_id] for roi_id in json_data["roi_ids"]
+        }
+        logger.info(f"roi_settings: {self.rois.roi_settings}")
 
     def save_config(self, filepath: str = None) -> None:
         """saves the configuration settings of the map into two files
             config.json and config.geojson
-            Saves the inputs such as dates, landsat_collection, satellite list, and ROIs
-            Saves the settings such as preprocess settings
+            Saves the settings used to download imagery to config.json and
+            saves the ROIs loaded on the map a config.geojson
         Args:
             file_path (str, optional): path to directory to save config files. Defaults to None.
         Raises:
             Exception: raised if self.settings is missing
-            ValueError: raised if any of "dates", "sat_list", "landsat_collection" is missing from self.settings
             Exception: raised if self.rois is missing
-            Exception: raised if selected_layer is missing
+            Exception: raised if selected set is empty because no ROIs were selected
         """
         exception_handler.config_check_if_none(self.settings, "settings")
         exception_handler.config_check_if_none(self.rois, "ROIs")
-        # selected_layer must contain selected ROI
-        selected_layer = self.map.find_layer(self.SELECTED_LAYER_NAME)
-        exception_handler.check_empty_roi_layer(selected_layer)
-        logger.info(f"self.rois.get_settings(): {self.rois.get_settings()}")
+        exception_handler.check_selected_set(self.selected_set)
 
-        if self.rois.get_settings() == {}:
-            if filepath is None:
-                filepath = os.path.abspath(os.getcwd())
+        roi_settings = self.rois.get_settings()
+        # if ROIs have no settings load settings into the rois
+        if roi_settings == {}:
+            filepath = filepath or os.path.abspath(os.getcwd())
+            date_str = common.generate_datestring()
             roi_settings = common.create_roi_settings(
-                self.settings, selected_layer.data, filepath
+                self.settings, self.selected_set, filepath, date_str
             )
-            # Save download settings dictionary to instance of ROI
-            self.rois.set_roi_settings(roi_settings)
+            self.rois.set_settings(roi_settings)
+
         # create dictionary to be saved to config.json
-        config_json = common.create_json_config(self.rois.get_settings(), self.settings)
+        config_json = common.create_json_config(roi_settings, self.settings)
         logger.info(f"config_json: {config_json} ")
-        # get currently selected rois selected
-        roi_ids = config_json["roi_ids"]
-        selected_rois = self.get_selected_rois(roi_ids)
+
+        # save all selected rois to config geodataframe
+        selected_rois = self.get_selected_rois(config_json["roi_ids"])
         logger.info(f"selected_rois: {selected_rois} ")
-        # save all selected rois, shorelines, transects and bbox to config geodataframe
         config_gdf = common.create_config_gdf(selected_rois)
         logger.info(f"config_gdf: {config_gdf} ")
-        is_downloaded = common.were_rois_downloaded(self.rois.roi_settings, roi_ids)
+
+        # save config files to the provided filepath
         if filepath is not None:
             # save to config.json
             common.config_to_file(config_json, filepath)
             # save to config_gdf.geojson
             common.config_to_file(config_gdf, filepath)
+            print(f"Saved config files for each ROI to {filepath}")
         elif filepath is None:
+            is_downloaded = common.were_rois_downloaded(
+                roi_settings, config_json["roi_ids"]
+            )
             # data has been downloaded before so inputs have keys 'filepath' and 'sitename'
             if is_downloaded == True:
-                # write config_json file to each directory where a roi was saved
-                roi_ids = config_json["roi_ids"]
-                for roi_id in roi_ids:
+                # for each ROI save two config file to the ROI's directory
+                for roi_id in config_json["roi_ids"]:
                     sitename = str(config_json[roi_id]["sitename"])
-                    filepath = os.path.abspath(
-                        os.path.join(config_json[roi_id]["filepath"], sitename)
+                    roi_name = str(config_json[roi_id]["roi_name"])
+                    ROI_path = os.path.join(
+                        config_json[roi_id]["filepath"], sitename, roi_name
                     )
-                    # save to config.json
-                    common.config_to_file(config_json, filepath)
-                    # save to config_gdf.geojson
-                    common.config_to_file(config_gdf, filepath)
+                    # save settings to config.json
+                    common.config_to_file(config_json, ROI_path)
+                    # save geodataframe to config_gdf.geojson
+                    common.config_to_file(config_gdf, ROI_path)
                 print("Saved config files for each ROI")
             elif is_downloaded == False:
-                # if data is not downloaded save to coastseg directory
+                # if data is not downloaded save to current working directory
                 filepath = os.path.abspath(os.getcwd())
                 # save to config.json
                 common.config_to_file(config_json, filepath)
@@ -380,7 +387,7 @@ class CoastSeg_Map:
         roi_area = common.get_area(feature["geometry"]) * 10**-6
         self.accordion.children[
             0
-        ].value = """ 
+        ].value = """
         <h2>ROI</h2>
         <p>Id: {}</p>
         <p>Area(km²): {}</p>
