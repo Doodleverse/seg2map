@@ -431,19 +431,20 @@ def create_roi_settings(
     settings: dict,
     selected_ids: set,
     filepath: str,
-    date_str: str,
 ) -> dict:
     """returns a dict of settings for each roi with roi id as the key.
     Example:
     "2": {
             "dates": ["2018-12-01", "2019-03-01"],
             "sitename": "roi",
+            "roi_name": "ID_2_dates_2010-01-01_to_2010-12-31",
             "filepath": "C:\\CoastSeg\\data",
             "roi_id": "2",
         },
     "3": {
             "dates": ["2018-12-01", "2019-03-01"],
             "sitename": "sitename1",
+            "roi_name": "ID_3_dates_2010-01-01_to_2010-12-31"
             "filepath": "C:\\CoastSeg\\data",
             "roi_id": "3",
         },
@@ -452,7 +453,6 @@ def create_roi_settings(
         settings (dict): currently loaded settings for the map
         selected_ids (set): set of selected ROI ids
         filepath (str): full path to data directory
-        date (str): datetime formatted string
     Returns:
         dict: settings for each roi with roi id as the key
     """
@@ -461,7 +461,7 @@ def create_roi_settings(
     sitename = settings["sitename"]
     dates = settings["dates"]
     for roi_id in list(selected_ids):
-        roi_name = f"ID_{roi_id}_dateime{date_str}"
+        roi_name = f"ID_{roi_id}_dates_{dates[0]}_to_{dates[1]}"
         roi_info = {
             "dates": dates,
             "roi_id": roi_id,
@@ -471,6 +471,124 @@ def create_roi_settings(
         }
         roi_settings[roi_id] = roi_info
     return roi_settings
+
+
+def do_rois_filepaths_exist(roi_settings: dict, roi_ids: list) -> bool:
+    """Returns true if all rois have filepaths that exist
+    Args:
+        roi_settings (dict): settings of all rois on map
+        roi_ids (list): ids of rois selected on map
+    Returns:
+        bool: True if all rois have filepaths that exist
+    """
+    # by default assume all filepaths exist
+    does_filepath_exist = True
+    for roi_id in roi_ids:
+        filepath = str(roi_settings[roi_id]["filepath"])
+        if not os.path.exists(filepath):
+            # if filepath does not exist stop checking
+            does_filepath_exist = False
+            logger.info(f"filepath did not exist{filepath}")
+            print("Some ROIs contained filepaths that did not exist")
+            break
+    logger.info(f"{does_filepath_exist} All rois filepaths exist")
+    return does_filepath_exist
+
+
+def do_rois_dirs_exist(roi_settings: dict, roi_ids: list) -> bool:
+    """Returns true if all rois have directories that exist
+    Args:
+        roi_settings (dict): settings of all rois on map
+        roi_ids (list): ids of rois selected on map
+    Returns:
+        bool: True if all rois have filepaths that exist
+    """
+    # by default assume all filepaths exist
+    does_filepath_exist = True
+    for roi_id in roi_ids:
+        if "filepath" not in roi_settings[roi_id].keys():
+            does_filepath_exist = False
+            logger.info(f"roi_path did not exist because no filepath found")
+            print("Some ROIs contained directories that did not exist")
+            break
+        if "sitename" not in roi_settings[roi_id].keys():
+            does_filepath_exist = False
+            logger.info(f"roi_path did not exist because no sitename found")
+            print("Some ROIs contained directories that did not exist")
+            break
+        filepath = os.path.abspath(roi_settings[roi_id]["filepath"])
+        sitename = roi_settings[roi_id]["sitename"]
+        roi_name = roi_settings[roi_id]["roi_name"]
+        roi_path = os.path.join(filepath, sitename, roi_name)
+        if not os.path.exists(roi_path):
+            # if filepath does not exist stop checking
+            does_filepath_exist = False
+            logger.info(f"roi_path did not exist{roi_path}")
+            print("Some ROIs contained directories that did not exist")
+            break
+    logger.info(f"{does_filepath_exist} All rois directories exist")
+    return does_filepath_exist
+
+
+def do_rois_have_sitenames(roi_settings: dict, roi_ids: list) -> bool:
+    """Returns true if all rois have "sitename" with non-empty string
+    Args:
+        roi_settings (dict): settings of all rois on map
+        roi_ids (list): ids of rois selected on map
+    Returns:
+        bool: True if all rois have "sitename" with non-empty string
+    """
+    # by default assume all sitenames are not empty
+    is_sitename_not_empty = True
+    for roi_id in roi_ids:
+        if roi_settings[roi_id]["sitename"] == "":
+            # if sitename is empty means user has not downloaded ROI data
+            is_sitename_not_empty = False
+            break
+    logger.info(f"{is_sitename_not_empty} All rois have non-empty sitenames")
+    return is_sitename_not_empty
+
+
+def were_rois_downloaded(roi_settings: dict, roi_ids: list) -> bool:
+    """Returns true if rois were downloaded before. False if they have not
+    Uses 'sitename' key for each roi to determine if roi was downloaded.
+    And checks if filepath were roi is saved is valid
+    If each roi's 'sitename' is not empty string returns true
+    Args:
+        roi_settings (dict): settings of all rois on map
+        roi_ids (list): ids of rois selected on map
+    Returns:
+        bool: True means rois were downloaded before
+    """
+    # by default assume rois were downloaded
+    is_downloaded = True
+    if roi_settings is None:
+        # if rois do not have roi_settings this means they were never downloaded
+        is_downloaded = False
+    elif roi_settings == {}:
+        # if rois do not have roi_settings this means they were never downloaded
+        is_downloaded = False
+    elif roi_settings != {}:
+        all_sitenames_exist = do_rois_have_sitenames(roi_settings, roi_ids)
+        all_filepaths_exist = do_rois_filepaths_exist(roi_settings, roi_ids)
+        all_roi_dirs_exist = do_rois_dirs_exist(roi_settings, roi_ids)
+        logger.info(
+            f"all_filepaths_exist: {all_filepaths_exist} all_sitenames_exist{all_sitenames_exist}"
+        )
+        is_downloaded = (
+            all_sitenames_exist and all_filepaths_exist and all_roi_dirs_exist
+        )
+    # print correct message depending on whether ROIs were downloaded
+    if is_downloaded:
+        logger.info(f"Located previously downloaded ROI data.")
+    elif is_downloaded == False:
+        print(
+            "Did not locate previously downloaded ROI data. To download the imagery for your ROIs click Download Imagery"
+        )
+        logger.info(
+            f"Did not locate previously downloaded ROI data. To download the imagery for your ROIs click Download Imagery"
+        )
+    return is_downloaded
 
 
 def get_site_path(settings: dict) -> str:
@@ -489,7 +607,8 @@ def get_site_path(settings: dict) -> str:
     # create sitename directory if it doesn't already exist
     site_path = os.path.join(data_path, settings["sitename"])
     # exception_handler.check_path_already_exists(site_path, settings["sitename"])
-    os.makedirs(site_path)
+    if not os.path.exists(site_path):
+        os.makedirs(site_path)
     return site_path
 
 

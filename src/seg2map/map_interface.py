@@ -86,7 +86,9 @@ class CoastSeg_Map:
 
         return self.settings
 
-    def download_imagery(self, download_bands: str = "multiband") -> None:
+    def download_imagery(
+        self,
+    ) -> None:
         """Download imagery for the selected ROIs on the map.
 
         Args:
@@ -115,7 +117,8 @@ class CoastSeg_Map:
         logger.info(
             f"Download in process.\nsitepath: {site_path}\nselected ids:{selected_ids}"
         )
-
+        # select number of bands to download
+        download_bands = settings["download_bands"]
         # download all selected ROIs on map to sitename directory
         print("Download in process")
         downloads.run_async_download(
@@ -294,6 +297,16 @@ class CoastSeg_Map:
         self.rois.roi_settings = {
             str(roi_id): json_data[roi_id] for roi_id in json_data["roi_ids"]
         }
+        logger.info(f"self.ids {self.ids}")
+        if json_data["roi_ids"] != []:
+            if set(json_data["roi_ids"]).issubset(set(self.ids)):
+                print(f"ids on map: {self.ids}")
+                print(f"json_data['roi_ids']: {json_data['roi_ids']}")
+                print("Cannot load these ROIs because the ids already exist on the map")
+            else:
+                self.ids.extend(json_data["roi_ids"])
+            logger.info(f"Loaded in ids from ROIs {json_data['roi_ids']}")
+            logger.info(f"self.ids after adding new ROIs {self.ids}")
         logger.info(f"roi_settings: {self.rois.roi_settings}")
 
     def save_config(self, filepath: str = None) -> None:
@@ -315,12 +328,14 @@ class CoastSeg_Map:
         roi_settings = self.rois.get_settings()
         # if ROIs have no settings load settings into the rois
         if roi_settings == {}:
-            filepath = filepath or os.path.abspath(os.getcwd())
-            date_str = common.generate_datestring()
+            default_file_path = filepath or os.path.join(os.getcwd(), "data")
             roi_settings = common.create_roi_settings(
-                self.settings, self.selected_set, filepath, date_str
+                self.settings, self.selected_set, default_file_path
             )
             self.rois.set_settings(roi_settings)
+            logger.info(
+                f"No roi settings found. Created ROI settings: {self.rois.get_settings()}"
+            )
 
         # create dictionary to be saved to config.json
         config_json = common.create_json_config(roi_settings, self.settings)
@@ -343,6 +358,7 @@ class CoastSeg_Map:
             is_downloaded = common.were_rois_downloaded(
                 roi_settings, config_json["roi_ids"]
             )
+            logger.info(f"Rois were {is_downloaded} downloaded")
             # data has been downloaded before so inputs have keys 'filepath' and 'sitename'
             if is_downloaded == True:
                 # for each ROI save two config file to the ROI's directory
@@ -352,11 +368,12 @@ class CoastSeg_Map:
                     ROI_path = os.path.join(
                         config_json[roi_id]["filepath"], sitename, roi_name
                     )
+                    logger.info(f"ROI_path{ROI_path}")
                     # save settings to config.json
                     common.config_to_file(config_json, ROI_path)
                     # save geodataframe to config_gdf.geojson
                     common.config_to_file(config_gdf, ROI_path)
-                print("Saved config files for each ROI")
+                print("Saved config files for each downloaded ROI")
             elif is_downloaded == False:
                 # if data is not downloaded save to current working directory
                 filepath = os.path.abspath(os.getcwd())
@@ -364,7 +381,7 @@ class CoastSeg_Map:
                 common.config_to_file(config_json, filepath)
                 # save to config_gdf.geojson
                 common.config_to_file(config_gdf, filepath)
-                print("Saved config files for each ROI")
+                print("Saved config files for each ROI.")
 
     def save_settings(self, **kwargs):
         """Saves the settings for downloading data in a dictionary
@@ -625,7 +642,7 @@ class CoastSeg_Map:
             else:
                 logger.info("creating bbox")
                 logger.info(f"self.ids {self.ids}")
-                # if no exceptions occur create new bbox, remove old bbox, and load new bbox
+                # create id for new roi
                 new_id = "1" if self.ids == [] else str(int(max(self.ids)) + 1)
                 self.ids.append(new_id)
                 logger.info(f"New id {new_id}")

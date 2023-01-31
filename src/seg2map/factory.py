@@ -68,7 +68,7 @@ def create_rois(coastsegmap, gdf: "geopandas.GeoDataFrame" = None, **kwargs) -> 
     logger.info(f"kwargs: {kwargs}")
     if "new_id" in kwargs:
         new_id = kwargs["new_id"]
-    logger.info(f"new_id: {new_id}")
+        logger.info(f"new_id: {new_id}")
     logger.info(f"gdf: {gdf}")
     # if gdf is given make a roi from it
     if gdf is not None:

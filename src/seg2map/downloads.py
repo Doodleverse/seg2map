@@ -361,6 +361,7 @@ def create_tasks(
     """
     tasks = []
     if download_bands == "multiband" or download_bands == "both":
+
         task = asyncio.create_task(
             async_download_tile(
                 session,
@@ -423,7 +424,6 @@ async def async_download_tiles(tiles_info: List[dict], download_bands: str) -> N
             for tile_id in tile_dict["ids"]:
                 file_id = tile_id.replace("/", "_")
                 year_str = file_id.split("_")[-1][:4]
-                logger.info(f"year_str: {year_str}")
                 # full path to year directory within multiband dir eg. ./multiband/2012
                 year_filepath = os.path.join(multiband_filepath, year_str)
                 logger.info(f"year_filepath: {year_filepath}")

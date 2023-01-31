@@ -4,6 +4,7 @@ from typing import Union
 
 # Internal dependencies imports
 from .exceptions import TooLargeError, TooSmallError
+from src.seg2map import common
 
 # External dependencies imports
 import geopandas as gpd
@@ -22,7 +23,7 @@ class ROI:
     """
 
     MAX_AREA = 3000000000  # UNITS = Sq. Meters
-    MIN_AREA = 9000  # UNITS = Sq. Meters
+    MIN_AREA = 10  # UNITS = Sq. Meters
     LAYER_NAME = "ROI"
 
     def __init__(
@@ -32,9 +33,26 @@ class ROI:
         filename: str = None,
     ):
         self.gdf = None
+        self.settings = {}
+        # self.settings={"sitename":"","filepath":"","ids":[],"dates":""}
         self.filename = "roi.geojson"
+
         if isinstance(rectangle, gpd.GeoDataFrame):
+            # check if geodataframe column has 'id' column and add one if one doesn't exist
+            if "id" not in rectangle.columns:
+                rectangle["id"] = list(map(str, rectangle.index.tolist()))
+            # get row ids of ROIs with area that's too large
+            drop_ids = common.get_ids_with_invalid_area(
+                rectangle, max_area=ROI.MAX_AREA
+            )
+            if len(drop_ids) > 0:
+                print("Dropping ROIs that are an invalid size ")
+                logger.info(f"Dropping ROIs that are an invalid size {drop_ids}")
+                rectangle.drop(index=drop_ids, axis=0, inplace=True)
+            # convert crs of ROIs to the map crs
+            rectangle.to_crs("EPSG:4326")
             self.gdf = rectangle
+
         elif isinstance(rectangle, dict):
             self.gdf = self.create_geodataframe(rectangle, new_id)
         else:
@@ -43,6 +61,12 @@ class ROI:
             )
         if filename:
             self.filename = filename
+
+    def set_settings(self, roi_settings: dict):
+        self.settings = roi_settings
+
+    def get_settings(self) -> dict:
+        return self.settings
 
     def create_geodataframe(
         self, rectangle: dict, new_id: str = "", crs: str = "EPSG:4326"
