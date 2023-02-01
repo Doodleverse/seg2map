@@ -52,12 +52,12 @@ We welcome collaboration! Please use our [Discussions](https://github.com/Doodle
     - [X] zenodo release of 5-class models for 768x768 imagery [zenodo page](https://doi.org/10.5281/zenodo.7566992)   
     - [X] set of 8-class models
     - [X] zenodo release of 8-class models for 768x768 imagery [zenodo page](https://doi.org/10.5281/zenodo.7570583)   
-  - [ ] [FloodNet](https://github.com/BinaLab/FloodNet-Challenge-EARTHVISION2021) / UAV
+  - [X] [FloodNet](https://github.com/BinaLab/FloodNet-Challenge-EARTHVISION2021) / UAV
     - [X] 10 class [dataset](https://github.com/BinaLab/FloodNet-Challenge-EARTHVISION2021) (Background, Building-flooded, Building-non-flooded, Road-flooded, Road-non-flooded, Water, Tree, Vehicle, Pool, Grass)
     - [X] set of models for 768 x 512 imagery
     - [X] zenodo release for 768 x 512 models [zenodo page](https://doi.org/10.5281/zenodo.7566810)
     - [X] set of models for 1024 x 768 imagery
-    - [ ] zenodo release for 1024 x 768 models [zenodo page](https://doi.org/10.5281/zenodo.7566797)
+    - [X] zenodo release for 1024 x 768 models [zenodo page](https://doi.org/10.5281/zenodo.7566797)
   - [ ] [Chesapeake Landcover](https://lila.science/datasets/chesapeakelandcover) (CCLC) / NAIP
     - [X] 7 class [dataset](https://lila.science/datasets/chesapeakelandcover) (water, tree canopy / forest, low vegetation / field, barren land, impervious (other), impervious (road), no data)
     - [X] set of models for 512x512 imagery [zenodo page](https://doi.org/10.5281/zenodo.7576904) 
@@ -74,7 +74,7 @@ We welcome collaboration! Please use our [Discussions](https://github.com/Doodle
     - [X] 7 class [dataset](https://www.kaggle.com/datasets/balraj98/deepglobe-land-cover-classification-dataset) (urban, ag., rangeland, forest, water, bare, unknown)
     - [X] set of models for 512x512 imagery
     - [ ] zenodo release for 512x512 imagery [zenodo page](https://doi.org/10.5281/zenodo.7576898) 
-  - [ ] [Barrier Islands](https://www.sciencebase.gov/catalog/item/5d5ece47e4b01d82ce961e36)
+  - [ ] [Barrier Islands](https://www.sciencebase.gov/catalog/item/5d5ece47e4b01d82ce961e36) / orthomosaic / coastlines
     - [ ] Substrate data 6 class (dev, sand, mixed, coarse, unknown, water)
     - [ ] set of substrate models for 768x768 imagery
     - [ ] zenodo release of substrate models for 768x768 imagery  
@@ -87,6 +87,10 @@ We welcome collaboration! Please use our [Discussions](https://github.com/Doodle
     - [ ] Geomorphic setting 7 class (beach, backshore, dune, washover, barrier interior, marsh, ridge/swale)
     - [ ] set of Geomorphic setting  models for 768x768 imagery
     - [ ] zenodo release of Geomorphic setting  models for 768x768 imagery            
+  - [ ] [NOAA](https://doi.org/10.5281/zenodo.7268083) / aerial / coastlines
+    - [X] 4 class dataset (water, bare sand, vegetation, development)
+    - [X] set of models for 768x512 imagery
+    - [ ] zenodo release for 768x512 imagery 
 - [ ] Develop codes/docs for selecting model
 - [ ] Develop codes/docs for applying model to make label imagery
 - [ ] Tool for mosaicing labels
@@ -139,7 +143,7 @@ We welcome collaboration! Please use our [Discussions](https://github.com/Doodle
 * [challenge](http://www.classic.grss-ieee.org/earthvision2021/challenge.html)
 * [paper](https://arxiv.org/abs/2012.02951)
 * Zenodo model release (768x512): Buscombe, Daniel. (2023). Doodleverse/Segmentation Zoo/Seg2Map Res-UNet models for FloodNet/10-class segmentation of RGB 768x512 UAV images (v1.0) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.7566810
-* Zenodo model release (1024x768): 
+* Zenodo model release (1024x768): Buscombe, Daniel. (2023). Doodleverse/Segmentation Zoo/Seg2Map Res-UNet models for FloodNet/10-class segmentation of RGB 1024x768 UAV images (v1.0) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.7566797
 
 ### OpenEarthMap
 * [website](https://open-earth-map.org/)
@@ -147,6 +151,9 @@ We welcome collaboration! Please use our [Discussions](https://github.com/Doodle
 * [paper](https://arxiv.org/abs/2210.10732)
 * Zenodo model release (512x512): 
 
+### NOAA Hurricanes
+* [data](https://doi.org/10.5281/zenodo.7268083)
+* Goldstein, Evan B., Buscombe, Daniel, Budavi, Priyanka, Favela, Jaycee, Fitzpatrick, Sharon, Gabbula, Sai Ram Ajay Krishna, Ku, Venus, Lazarus, Eli D., McCune, Ryan, Shah, Manish, Sigdel, Rajesh, & Tagner, Steven. (2022). Segmentation Labels for Emergency Response Imagery from Hurricane Barry, Delta, Dorian, Florence, Isaias, Laura, Michael, Sally, Zeta, and Tropical Storm Gordon (Version v1) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.7268083
 
 ## Classes
 
