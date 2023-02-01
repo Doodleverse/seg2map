@@ -511,7 +511,7 @@ class UI:
                         f"Loading ROIs from file: {os.path.abspath(filechooser.selected)}"
                     )
                     self.coastseg_map.load_feature_on_map(
-                        "rois", os.path.abspath(filechooser.selected)
+                        "rois", file = os.path.abspath(filechooser.selected)
                     )
             except Exception as error:
                 # renders error message as a box on map

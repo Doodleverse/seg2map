@@ -243,12 +243,14 @@ class CoastSeg_Map:
         # check if ids in geojson file already exist on map
         json_data = common.read_json_file(config_path)
 
-        # add new ids to self.ids and throw an error if any ids already exist in self.ids
-        new_ids = json_data["roi_ids"]
-        logger.info(f"json_data['roi_ids'] {json_data['roi_ids']}")
-        self.add_to_roi_ids(new_ids)
+        # # add new ids to self.ids and throw an error if any ids already exist in self.ids
+        # new_ids = json_data["roi_ids"]
+        # logger.info(f"json_data['roi_ids'] {json_data['roi_ids']}")
+        # self.add_to_roi_ids(new_ids)
+
         # load geodataframe from config and load features onto map
         self.load_gdf_config(filepath)
+
         # path to directory to search for config_gdf.json file
         search_path = os.path.dirname(os.path.realpath(filepath))
         # create path to config.json file in search_path directory
@@ -282,6 +284,7 @@ class CoastSeg_Map:
         logger.info(f"Dropping columns from ROI: {columns_to_drop}")
         roi_gdf.drop(columns_to_drop, axis=1, inplace=True)
         logger.info(f"roi_gdf: {roi_gdf}")
+        roi_gdf=self.load_roi_geodataframe(roi_gdf)
         # Create ROI object from roi_gdf
         self.rois = ROI(rectangle=roi_gdf)
         self.load_feature_on_map("rois", gdf=roi_gdf)
@@ -673,6 +676,27 @@ class CoastSeg_Map:
             self.ids = new_roi_ids
             logger.info(f"Updated self.ids with new_ids{new_ids}\n self.ids{self.ids}")
 
+    def load_roi_geodataframe(self,gdf: gpd.geodataframe)-> gpd.geodataframe:
+        if 'id' in gdf.columns:
+            # add new ids to self.ids and throw an error if any ids already exist in self.ids
+            new_ids = list(gdf["id"])
+            logger.info(f"loaded new_ids from gdf: {new_ids}")
+            self.add_to_roi_ids(new_ids)
+        elif 'id' not in gdf.columns:
+            # create id for each ROI in the geodataframe
+            new_ids= []
+            for _ in range(len(gdf)):
+                new_id =common.create_roi_id(self.ids)
+                self.ids.extend(new_id)
+                new_ids.extend(new_id)
+            logger.info(f"new_ids generated for ROI : {new_ids}")
+            self.add_to_roi_ids(new_ids)
+            gdf['id'] = new_ids
+        if str(gdf.crs) != 'epsg:4326':
+            gdf= gdf.to_crs('EPSG:3587')
+
+        return gdf
+
     def load_feature_on_map(
         self,
         feature_name: str,
@@ -694,6 +718,7 @@ class CoastSeg_Map:
         # if file is passed read gdf from file
         if file != "":
             gdf = common.read_gpd_file(file)
+            gdf = self.load_roi_geodataframe(gdf)
 
         new_feature = self.factory.make_feature(
             self, feature_name, gdf, new_id=new_id, **kwargs
