@@ -85,6 +85,13 @@ class UI:
         )
         self.save_config_button.on_click(self.on_save_config_clicked)
 
+        self.load_file_button = Button(
+            description=f"Load geojson file",
+            icon="fa-file-o",
+            style=self.load_style,
+        )
+        self.load_file_button.on_click(self.load_feature_from_file)
+
         self.download_button = Button(
             description="Download Imagery", style=self.action_style
         )
@@ -493,6 +500,31 @@ class UI:
         except Exception as error:
             # renders error message as a box on map
             exception_handler.handle_exception(error, self.coastseg_map.warning_box)
+
+    @debug_view.capture(clear_output=True)
+    def load_feature_from_file(self, btn):
+        # Prompt user to select a geojson file
+        def file_chooser_callback(filechooser: FileChooser) -> None:
+            try:
+                if filechooser.selected:
+                    print(
+                        f"Loading ROIs from file: {os.path.abspath(filechooser.selected)}"
+                    )
+                    self.coastseg_map.load_feature_on_map(
+                        "rois", os.path.abspath(filechooser.selected)
+                    )
+            except Exception as error:
+                # renders error message as a box on map
+                exception_handler.handle_exception(error, self.coastseg_map.warning_box)
+
+        # create instance of chooser that calls callsfile_chooser_callback
+        file_chooser = create_file_chooser(
+            file_chooser_callback, title="Select a geojson file"
+        )
+        # clear row and close all widgets in row_4 before adding new file_chooser
+        self.clear_row(self.file_chooser_row)
+        # add instance of file_chooser to row 4
+        self.file_chooser_row.children = [file_chooser]
 
     @debug_view.capture(clear_output=True)
     def save_to_file_btn_clicked(self, btn):

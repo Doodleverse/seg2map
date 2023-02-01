@@ -4,6 +4,7 @@ import logging
 from typing import List
 from collections import defaultdict
 from datetime import datetime
+from typing import Union
 
 from src.seg2map import common
 from src.seg2map import factory
@@ -235,6 +236,17 @@ class CoastSeg_Map:
         Args:
             filepath (str): full path to config.geojson file
         """
+        # path to directory to search for config_gdf.json file
+        search_path = os.path.dirname(os.path.realpath(filepath))
+        # create path to config.json file in search_path directory
+        config_path = common.find_config_json(search_path)
+        # check if ids in geojson file already exist on map
+        json_data = common.read_json_file(config_path)
+
+        # add new ids to self.ids and throw an error if any ids already exist in self.ids
+        new_ids = json_data["roi_ids"]
+        logger.info(f"json_data['roi_ids'] {json_data['roi_ids']}")
+        self.add_to_roi_ids(new_ids)
         # load geodataframe from config and load features onto map
         self.load_gdf_config(filepath)
         # path to directory to search for config_gdf.json file
@@ -270,8 +282,6 @@ class CoastSeg_Map:
         logger.info(f"Dropping columns from ROI: {columns_to_drop}")
         roi_gdf.drop(columns_to_drop, axis=1, inplace=True)
         logger.info(f"roi_gdf: {roi_gdf}")
-        # delete the original gdf read in from config geojson file
-        del gdf
         # Create ROI object from roi_gdf
         self.rois = ROI(rectangle=roi_gdf)
         self.load_feature_on_map("rois", gdf=roi_gdf)
@@ -297,16 +307,6 @@ class CoastSeg_Map:
         self.rois.roi_settings = {
             str(roi_id): json_data[roi_id] for roi_id in json_data["roi_ids"]
         }
-        logger.info(f"self.ids {self.ids}")
-        if json_data["roi_ids"] != []:
-            if set(json_data["roi_ids"]).issubset(set(self.ids)):
-                print(f"ids on map: {self.ids}")
-                print(f"json_data['roi_ids']: {json_data['roi_ids']}")
-                print("Cannot load these ROIs because the ids already exist on the map")
-            else:
-                self.ids.extend(json_data["roi_ids"])
-            logger.info(f"Loaded in ids from ROIs {json_data['roi_ids']}")
-            logger.info(f"self.ids after adding new ROIs {self.ids}")
         logger.info(f"roi_settings: {self.rois.roi_settings}")
 
     def save_config(self, filepath: str = None) -> None:
@@ -643,11 +643,35 @@ class CoastSeg_Map:
                 logger.info("creating bbox")
                 logger.info(f"self.ids {self.ids}")
                 # create id for new roi
-                new_id = "1" if self.ids == [] else str(int(max(self.ids)) + 1)
-                self.ids.append(new_id)
-                logger.info(f"New id {new_id}")
-                logger.info(f"self.ids {self.ids}")
+                new_id = common.create_roi_id(self.ids)
+                self.add_to_roi_ids(new_id)
                 self.load_feature_on_map("rois", new_id)
+
+    def add_to_roi_ids(self, new_ids: Union[str, list] = None):
+        """Add new ROI ids to the current list of ROI ids.
+
+        Args:
+        - new_ids (Union[str, list]): The new ROI ids to add. Can be a single id as a string, or a list of ids.
+
+        Raises:
+        - Exception: If any of the new ROI ids already exist in the current list of ROI ids.
+
+        Returns:
+        - None
+        """
+        logger.info(f"self.ids {self.ids}")
+        # create new list with new_ids if they aren't already in self.ids
+        new_roi_ids = common.create_ids_list(self.ids, new_ids)
+        logger.info(f"new_roi_ids {new_roi_ids}")
+        # if original set returned means there some new_ids already present in self.ids
+        if set(new_roi_ids) == set(self.ids):
+            repeat_ids = set(new_roi_ids) & set(self.ids)
+            raise Exception(
+                f"Cannot load ROIs with ids {repeat_ids} on map because they already exist"
+            )
+        else:
+            self.ids = new_roi_ids
+            logger.info(f"Updated self.ids with new_ids{new_ids}\n self.ids{self.ids}")
 
     def load_feature_on_map(
         self,
