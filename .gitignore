@@ -6,6 +6,10 @@
 *multiband*
 *USDA*
 
+data/*
+config_gdf.geojson
+config.json
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
