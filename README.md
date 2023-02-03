@@ -58,22 +58,22 @@ We welcome collaboration! Please use our [Discussions](https://github.com/Doodle
     - [X] zenodo release for 768 x 512 models [zenodo page](https://doi.org/10.5281/zenodo.7566810)
     - [X] set of models for 1024 x 768 imagery
     - [X] zenodo release for 1024 x 768 models [zenodo page](https://doi.org/10.5281/zenodo.7566797)
-  - [ ] [Chesapeake Landcover](https://lila.science/datasets/chesapeakelandcover) (CCLC) / NAIP
+  - [X] [Chesapeake Landcover](https://lila.science/datasets/chesapeakelandcover) (CCLC) / NAIP
     - [X] 7 class [dataset](https://lila.science/datasets/chesapeakelandcover) (water, tree canopy / forest, low vegetation / field, barren land, impervious (other), impervious (road), no data)
-    - [X] set of models for 512x512 imagery [zenodo page](https://doi.org/10.5281/zenodo.7576904) 
-    - [ ] zenodo release  
+    - [X] set of models for 512x512 imagery 
+    - [X] zenodo release [page](https://doi.org/10.5281/zenodo.7576904)
   - [ ] [EnviroAtlas](https://zenodo.org/record/6268150#.Y9H3vxzMLRZ) / NAIP 
     - [X] 6 class dataset (water, impervious, barren, trees, herbaceous, shrubland)
     - [ ] set of models for 1024x1024 imagery
     - [ ] zenodo release for 1024 x 1024 models [zenodo page](https://doi.org/10.5281/zenodo.7576909)
-  - [ ] [OpenEarthMap](https://open-earth-map.org/) / aerial / high-res. sat
+  - [X] [OpenEarthMap](https://open-earth-map.org/) / aerial / high-res. sat
     - [X] 9 class [dataset](https://zenodo.org/record/7223446#.Y9IN2BzMLRY) (bareland, rangeland, dev., road, tree, water, ag., building, nodata)
     - [X] set of models for 512x512 imagery
-    - [ ] zenodo release for 512x512 imagery [zenodo page](https://doi.org/10.5281/zenodo.7576894) 
-  - [ ] [DeepGlobe](https://arxiv.org/abs/1805.06561) / aerial / high-res. sat
+    - [X] zenodo release for 512x512 models [zenodo page](https://doi.org/10.5281/zenodo.7576894) 
+  - [X] [DeepGlobe](https://arxiv.org/abs/1805.06561) / aerial / high-res. sat
     - [X] 7 class [dataset](https://www.kaggle.com/datasets/balraj98/deepglobe-land-cover-classification-dataset) (urban, ag., rangeland, forest, water, bare, unknown)
     - [X] set of models for 512x512 imagery
-    - [ ] zenodo release for 512x512 imagery [zenodo page](https://doi.org/10.5281/zenodo.7576898) 
+    - [X] zenodo release for 512x512 imagery [zenodo page](https://doi.org/10.5281/zenodo.7576898) 
   - [ ] [Barrier Islands](https://www.sciencebase.gov/catalog/item/5d5ece47e4b01d82ce961e36) / orthomosaic / coastlines
     - [ ] Substrate data 6 class (dev, sand, mixed, coarse, unknown, water)
     - [ ] set of substrate models for 768x768 imagery
@@ -114,7 +114,7 @@ We welcome collaboration! Please use our [Discussions](https://github.com/Doodle
 
 ### Chesapeake Landcover
 * [webpage](https://lila.science/datasets/chesapeakelandcover)
-* Zenodo model release (512x512): 
+* Zenodo model release (512x512): Buscombe, Daniel. (2023). Doodleverse/Segmentation Zoo/Seg2Map Res-UNet models for Chesapeake/7-class segmentation of RGB 512x512 high-res. images (v1.0) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.7576904
 
 ### Coast Train
 * [paper](https://www.nature.com/articles/s41597-023-01929-2)
@@ -129,7 +129,7 @@ We welcome collaboration! Please use our [Discussions](https://github.com/Doodle
 * [paper](https://arxiv.org/abs/1805.06561)
 * [challenge](http://deepglobe.org/challenge.html)
 * [data](https://www.kaggle.com/datasets/balraj98/deepglobe-land-cover-classification-dataset)
-* Zenodo model release (512x512): 
+* Zenodo model release (512x512): Buscombe, Daniel. (2023). Doodleverse/Segmentation Zoo/Seg2Map Res-UNet models for DeepGlobe/7-class segmentation of RGB 512x512 high-res. images (v1.0) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.7576898
 
 ### EnviroAtlas
 * [EnviroAtlas dataset](https://zenodo.org/record/6268150#.Y9H3vxzMLRZ)
@@ -149,7 +149,7 @@ We welcome collaboration! Please use our [Discussions](https://github.com/Doodle
 * [website](https://open-earth-map.org/)
 * [data](https://zenodo.org/record/7223446#.Y7zQLxXMK3A)
 * [paper](https://arxiv.org/abs/2210.10732)
-* Zenodo model release (512x512): 
+* Zenodo model release (512x512): Buscombe, Daniel. (2023). Doodleverse/Segmentation Zoo/Seg2Map Res-UNet models for OpenEarthMap/9-class segmentation of RGB 512x512 high-res. images (v1.0) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.7576894
 
 ### NOAA Hurricanes
 * [data](https://doi.org/10.5281/zenodo.7268083)
