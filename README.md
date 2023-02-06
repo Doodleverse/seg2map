@@ -93,11 +93,14 @@ We welcome collaboration! Please use our [Discussions](https://github.com/Doodle
     - [X] zenodo release for 1024x1024 imagery [zenodo page](https://doi.org/10.5281/zenodo.7607895)
     - [X] 2 class dataset (other, flooded building)
     - [ ] set of flooded building/other models for 1024x1024 imagery
-    - [ ] zenodo release for 1024x1024 imagery 
+    - [ ] zenodo release for 1024x1024 imagery [zenodo page](https://doi.org/10.5281/zenodo.7613106)
   - [ ] xBD-hurricanes / aerial / high-res. sat, a subset of the [XView2](https://xview2.org/) dataset
     - [X] 4 class building dataset (other, no damage, minor damage, major damage)
     - [ ] set of building/other models for 768x768 imagery
-    - [ ] zenodo release for 768x768 imagery 
+    - [ ] zenodo release for 768x768 imagery [zenodo page](https://doi.org/10.5281/zenodo.7613175)
+    - [ ] 2 class building dataset (other, building)
+    - [ ] set of building/other models for 768x768 imagery
+    - [ ] zenodo release for 768x768 imagery [zenodo page](https://doi.org/10.5281/zenodo.7613212)
   - [ ] [NOAA](https://doi.org/10.5281/zenodo.7268083) / aerial / coastlines
     - [X] 4 class dataset (water, bare sand, vegetation, development)
     - [X] set of models for 768x512 imagery
