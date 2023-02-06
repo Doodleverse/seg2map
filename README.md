@@ -89,8 +89,15 @@ We welcome collaboration! Please use our [Discussions](https://github.com/Doodle
     - [ ] zenodo release of Geomorphic setting  models for 768x768 imagery  
   - [ ] [AAAI](https://github.com/FrontierDevelopmentLab/multi3net) / aerial / high-res. sat
     - [X] 2 class dataset (other, building)
-    - [X] set of models for 1024x1024 imagery
-    - [ ] zenodo release for 1024x1024 imagery [zenodo page](https://doi.org/10.5281/zenodo.7607895)
+    - [X] set of building/other models for 1024x1024 imagery
+    - [X] zenodo release for 1024x1024 imagery [zenodo page](https://doi.org/10.5281/zenodo.7607895)
+    - [X] 2 class dataset (other, flooded building)
+    - [ ] set of flooded building/other models for 1024x1024 imagery
+    - [ ] zenodo release for 1024x1024 imagery 
+  - [ ] xBD-hurricanes / aerial / high-res. sat, a subset of the [XView2](https://xview2.org/) dataset
+    - [X] 4 class building dataset (other, no damage, minor damage, major damage)
+    - [ ] set of building/other models for 768x768 imagery
+    - [ ] zenodo release for 768x768 imagery 
   - [ ] [NOAA](https://doi.org/10.5281/zenodo.7268083) / aerial / coastlines
     - [X] 4 class dataset (water, bare sand, vegetation, development)
     - [X] set of models for 768x512 imagery
@@ -135,6 +142,18 @@ We welcome collaboration! Please use our [Discussions](https://github.com/Doodle
 * [data](https://doi.org/10.5281/zenodo.7268083)
 * Goldstein, Evan B., Buscombe, Daniel, Budavi, Priyanka, Favela, Jaycee, Fitzpatrick, Sharon, Gabbula, Sai Ram Ajay Krishna, Ku, Venus, Lazarus, Eli D., McCune, Ryan, Shah, Manish, Sigdel, Rajesh, & Tagner, Steven. (2022). Segmentation Labels for Emergency Response Imagery from Hurricane Barry, Delta, Dorian, Florence, Isaias, Laura, Michael, Sally, Zeta, and Tropical Storm Gordon (Version v1) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.7268083
 
+#### AAAI / Buildings / Flooded Buildings
+* [data](https://github.com/FrontierDevelopmentLab/multi3net)
+* [data](https://github.com/orion29/Satellite-Image-Segmentation-for-Flood-Damage-Analysis)
+* [paper](https://arxiv.org/pdf/1812.01756.pdf)
+* Zenodo model release (1024x1024) building / no building: Buscombe, Daniel. (2023). Doodleverse/Segmentation Zoo/Seg2Map Res-UNet models for segmentation of buildings of RGB 1024x1024 high-res. images (v1.0) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.7607895
+* Zenodo model release (1024x1024) flooded building / no flooded building: 
+
+#### XBD-hurricanes
+* [Xview2 challenge](https://xview2.org/)
+* [XBD-hurricanes code](https://github.com/MARDAScience/XBD-hurricanes)
+
+
 ### General Landcover
 
 #### DeepGlobe
@@ -163,11 +182,6 @@ We welcome collaboration! Please use our [Discussions](https://github.com/Doodle
 * [paper](https://arxiv.org/abs/2210.10732)
 * Zenodo model release (512x512): Buscombe, Daniel. (2023). Doodleverse/Segmentation Zoo/Seg2Map Res-UNet models for OpenEarthMap/9-class segmentation of RGB 512x512 high-res. images (v1.0) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.7576894
 
-#### AAAI / Buildings
-* [data](https://github.com/FrontierDevelopmentLab/multi3net)
-* [data](https://github.com/orion29/Satellite-Image-Segmentation-for-Flood-Damage-Analysis)
-* [paper](https://arxiv.org/pdf/1812.01756.pdf)
-* Zenodo model release (1024x1024): 
 
 
 ## Classes: 
