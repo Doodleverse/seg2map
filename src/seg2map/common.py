@@ -1,5 +1,7 @@
 import os
 import re
+import random
+import string
 import glob
 import shutil
 import json
@@ -29,6 +31,14 @@ from ipywidgets import HTML
 
 
 logger = logging.getLogger(__name__)
+
+
+def generate_random_string(avoid_list=[]):
+    alphanumeric = string.ascii_letters + string.digits
+    random_string = "".join(random.choice(alphanumeric) for i in range(6))
+    if random_string in avoid_list:
+        return generate_random_string(avoid_list)
+    return random_string
 
 
 def get_subdirs(parent_dir: str):
@@ -274,7 +284,7 @@ def extract_roi_by_id(gdf: gpd.geodataframe, roi_id: int) -> gpd.geodataframe:
 
 def get_area(polygon: dict) -> float:
     "Calculates the area of the geojson polygon using the same method as geojson.io"
-    logger.info("get_area")
+    logger.info(f"get_area: {polygon}")
     return round(area(polygon), 3)
 
 

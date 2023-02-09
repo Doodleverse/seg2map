@@ -7,7 +7,6 @@ from datetime import datetime
 from typing import Union
 
 from src.seg2map import common
-from src.seg2map import factory
 from src.seg2map.roi import ROI
 from src.seg2map import exceptions
 from src.seg2map import exception_handler
@@ -26,33 +25,23 @@ from ipywidgets import HTML
 logger = logging.getLogger(__name__)
 
 
-class CoastSeg_Map:
-    def __init__(self, settings: dict = None):
-        self.factory = factory.Factory()
+class Seg2Map:
+    def __init__(self):
         # settings:  used to select data to download and preprocess settings
         self.settings = {
             "dates": "",
             "sitename": "",
         }
-        if settings is not None:
-            tmp_settings = {**settings, **self.settings}
-            self.settings = tmp_settings.copy()
         # selected_set set(str): ids of the selected rois
         self.selected_set = set()
         # selected_set set(str): ids of rois selected for deletion
         self.delete_set = set()
         # ROI objects on map
-        self.rois = None
-        # ids of rois
-        self.ids = []
-        # sitename : name of directory containing all ROI downloads chosen by user
-        self.sitename = ""
+        self.rois = ROI()
         # selected layer name
-        self.SELECTED_LAYER_NAME = "selected ROIs"
+        self.SELECTED_LAYER_NAME = "selected"
         # layer that contains ROIs that will be deleted
-        self.DELETE_LAYER_NAME = "ROIs to delete"
-        # preprocess_settings : dictionary of settings used by coastsat to download imagery
-        self.preprocess_settings = {}
+        self.DELETE_LAYER_NAME = "delete"
         # create map if map_settings not provided else use default settings
         self.map = self.create_map()
         # create controls and add to map
@@ -284,10 +273,10 @@ class CoastSeg_Map:
         logger.info(f"Dropping columns from ROI: {columns_to_drop}")
         roi_gdf.drop(columns_to_drop, axis=1, inplace=True)
         logger.info(f"roi_gdf: {roi_gdf}")
-        roi_gdf=self.load_roi_geodataframe(roi_gdf)
-        # Create ROI object from roi_gdf
-        self.rois = ROI(rectangle=roi_gdf)
-        self.load_feature_on_map("rois", gdf=roi_gdf)
+
+        # Add geodataframe from config file to ROI
+        self.rois.add_geodataframe(roi_gdf)
+        self.load_feature_on_map()
 
     def load_json_config(self, filepath: str) -> None:
         """
@@ -303,14 +292,14 @@ class CoastSeg_Map:
         """
         exception_handler.check_if_None(self.rois)
         json_data = common.read_json_file(filepath)
-        # replace coastseg_map.settings with settings from config file
-        self.settings = json_data["settings"]
-        logger.info(f"Loaded settings from file: {self.settings}")
+        # replace settings with settings from config file
+        self.save_settings(json_data["settings"])
+
         # replace roi_settings for each ROI with contents of config.json
-        self.rois.roi_settings = {
+        new_roi_settings = {
             str(roi_id): json_data[roi_id] for roi_id in json_data["roi_ids"]
         }
-        logger.info(f"roi_settings: {self.rois.roi_settings}")
+        self.rois.set_settings(new_roi_settings)
 
     def save_config(self, filepath: str = None) -> None:
         """saves the configuration settings of the map into two files
@@ -460,25 +449,30 @@ class CoastSeg_Map:
         if on_hover is not None:
             new_layer.on_hover(on_hover)
         if on_click is not None:
-            # when feature is clicked on on_click function is called
             new_layer.on_click(on_click)
         self.map.add_layer(new_layer)
         logger.info(f"Add layer to map: {layer_name}")
 
-    def remove_selected_rois(self, ids: List[int]):
-        # remove each roi by id selected by user
-        for roi_id in ids:
-            self.rois.remove_by_id(roi_id)
+    def remove_selected_rois(self, ids: List[int]) -> None:
+        """Remove selected regions of interest (ROIs).
+
+        Removes the ROIs with the specified `ids` from the `self.rois` GeoDataFrame. The `ids` are also
+        removed from the `self.selected_set` set of selected ROIs.
+
+        Logs information about the `self.rois.gdf`, `self.selected_set`, and the remaining ROI IDs after
+        removing the specified `ids`.
+
+        Args:
+            ids (List[int]): A list of integers representing the IDs of the ROIs to remove.
+
+        Returns:
+            None
+        """
+        self.rois.remove_ids(set(ids))
+        self.selected_set -= set(ids)
         logger.info(f"self.rois.gdf after removing ids {ids}: {self.rois.gdf}")
-        # remove all deleted rois from ids and selected set
-        logger.info(f"ids {ids}")
-        for roi_id in ids:
-            if roi_id in self.ids:
-                self.ids.remove(roi_id)
-            if roi_id in self.selected_set:
-                self.selected_set.remove(roi_id)
         logger.info(f"selected_set {self.selected_set} after removing ids {ids}")
-        logger.info(f"self.ids {self.ids} after removing ids {ids}")
+        logger.info(f"IDs {self.rois.get_ids()} after removing ids {ids}")
 
     def remove_all_rois(self) -> None:
         """Removes all the unselected rois from the map"""
@@ -486,10 +480,8 @@ class CoastSeg_Map:
         existing_layer = self.map.find_layer(ROI.LAYER_NAME)
         if existing_layer is not None:
             self.map.remove_layer(existing_layer)
-        self.rois = None
+        self.rois = ROI()
         logger.info("Removing all ROIs from map")
-        # remove all roi ids from ids list
-        self.ids = []
         # Remove the selected and unselected rois
         self.remove_layer_by_name(self.SELECTED_LAYER_NAME)
         self.remove_layer_by_name(ROI.LAYER_NAME)
@@ -619,7 +611,7 @@ class CoastSeg_Map:
     def handle_draw(
         self, target: "ipyleaflet.leaflet.DrawControl", action: str, geo_json: dict
     ):
-        """Adds or removes the bounding box  when drawn/deleted from map
+        """Adds or removes the roi  when drawn/deleted from map
         Args:
             target (ipyleaflet.leaflet.DrawControl): draw control used
             action (str): name of the most recent action ex. 'created', 'deleted'
@@ -630,108 +622,54 @@ class CoastSeg_Map:
             self.draw_control.last_action == "created"
             and self.draw_control.last_draw["geometry"]["type"] == "Polygon"
         ):
-            # validate the bbox size
-            geometry = self.draw_control.last_draw["geometry"]
-            bbox_area = common.get_area(geometry)
-            logger.info(f"bbox_area: {bbox_area}")
             try:
-                ROI.check_size(bbox_area)
+                geometry = self.draw_control.last_draw["geometry"]
+                self.rois.add_geometry(geometry)
+                self.load_feature_on_map()
             except exceptions.TooLargeError as too_big:
-                self.draw_control.clear()
                 exception_handler.handle_bbox_error(too_big, self.warning_box)
             except exceptions.TooSmallError as too_small:
-                self.draw_control.clear()
                 exception_handler.handle_bbox_error(too_small, self.warning_box)
-            else:
-                logger.info("creating bbox")
-                logger.info(f"self.ids {self.ids}")
-                # create id for new roi
-                new_id = common.create_roi_id(self.ids)
-                self.add_to_roi_ids(new_id)
-                self.load_feature_on_map("rois", new_id)
-
-    def add_to_roi_ids(self, new_ids: Union[str, list] = None):
-        """Add new ROI ids to the current list of ROI ids.
-
-        Args:
-        - new_ids (Union[str, list]): The new ROI ids to add. Can be a single id as a string, or a list of ids.
-
-        Raises:
-        - Exception: If any of the new ROI ids already exist in the current list of ROI ids.
-
-        Returns:
-        - None
-        """
-        logger.info(f"self.ids {self.ids}")
-        # create new list with new_ids if they aren't already in self.ids
-        new_roi_ids = common.create_ids_list(self.ids, new_ids)
-        logger.info(f"new_roi_ids {new_roi_ids}")
-        # if original set returned means there some new_ids already present in self.ids
-        if set(new_roi_ids) == set(self.ids):
-            repeat_ids = set(new_roi_ids) & set(self.ids)
-            raise Exception(
-                f"Cannot load ROIs with ids {repeat_ids} on map because they already exist"
-            )
-        else:
-            self.ids = new_roi_ids
-            logger.info(f"Updated self.ids with new_ids{new_ids}\n self.ids{self.ids}")
-
-    def load_roi_geodataframe(self,gdf: gpd.geodataframe)-> gpd.geodataframe:
-        if 'id' in gdf.columns:
-            # add new ids to self.ids and throw an error if any ids already exist in self.ids
-            new_ids = list(gdf["id"])
-            logger.info(f"loaded new_ids from gdf: {new_ids}")
-            self.add_to_roi_ids(new_ids)
-        elif 'id' not in gdf.columns:
-            # create id for each ROI in the geodataframe
-            new_ids= []
-            for _ in range(len(gdf)):
-                new_id =common.create_roi_id(self.ids)
-                self.ids.extend(new_id)
-                new_ids.extend(new_id)
-            logger.info(f"new_ids generated for ROI : {new_ids}")
-            self.add_to_roi_ids(new_ids)
-            gdf['id'] = new_ids
-        if str(gdf.crs) != 'epsg:4326':
-            gdf= gdf.to_crs('EPSG:3587')
-
-        return gdf
+            except Exception as error:
+                exception_handler.handle_exception(error, self.warning_box)
+            finally:
+                self.draw_control.clear()
 
     def load_feature_on_map(
         self,
-        feature_name: str,
-        new_id: str = "",
         file: str = "",
-        gdf: gpd.GeoDataFrame = None,
         **kwargs,
     ) -> None:
-        """Loads feature of type feature_name onto the map either from a file or from a geodataframe given by gdf
+        """Load a feature on a map.
 
-        if feature_name given is not "rois" throw exception
+        Loads a GeoDataFrame as a feature on a map. If a `file` is provided, the function reads the
+        GeoDataFrame from the file. If a `gdf` is provided, the function uses it directly. If neither
+        is provided, it uses the GeoDataFrame stored in `self.rois.gdf`.
+
+        The feature is added to the map using the `self.load_on_map` method, with the `layer_name`
+        set to `ROI.LAYER_NAME`, the `on_hover` set to `self.update_roi_html`, and the `on_click` set
+        to `self.select_onclick_handler`.
 
         Args:
-            feature_name (str): name of feature must be one of the following
-            "rois"
-            file (str, optional): geojson file containing feature. Defaults to "".
-            gdf (gpd.GeoDataFrame, optional): geodataframe containing feature geometry. Defaults to None.
+            file (str, optional): The file path to read the GeoDataFrame from. Default is an empty string.
+            gdf (gpd.GeoDataFrame, optional): The GeoDataFrame to use. Default is None.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            None
         """
         # if file is passed read gdf from file
         if file != "":
+            logger.info(f"Loading file on map: {file}")
             gdf = common.read_gpd_file(file)
-            gdf = self.load_roi_geodataframe(gdf)
+            exception_handler.check_if_gdf_empty(gdf, "roi")
+            self.rois.add_geodataframe(gdf)
 
-        new_feature = self.factory.make_feature(
-            self, feature_name, gdf, new_id=new_id, **kwargs
-        )
-        logger.info(f"new_feature: {new_feature}")
-        logger.info(f"feature_name: {feature_name.lower()}")
-        on_hover = None
-        on_click = None
-        if "roi" in feature_name.lower():
-            on_hover = self.update_roi_html
-            on_click = self.select_onclick_handler
+        new_feature = self.rois
+        on_hover = self.update_roi_html
+        on_click = self.select_onclick_handler
+        layer_name = ROI.LAYER_NAME
         # load new feature on map
-        layer_name = new_feature.LAYER_NAME
         self.load_on_map(new_feature, layer_name, on_hover, on_click)
 
     def load_on_map(
@@ -751,7 +689,28 @@ class CoastSeg_Map:
             layer_name, new_layer, on_hover=on_hover, on_click=on_click
         )
 
-    def create_layer(self, feature, layer_name: str):
+    def create_layer(self, feature, layer_name: str) -> "ipyleaflet.GeoJSON":
+        """Create a layer from a feature.
+
+        Creates a layer from a feature for display on a map. If the feature has an attribute `gdf`,
+        the layer is created from the GeoDataFrame stored in `gdf`. If the `gdf` is empty, a warning
+        is logged and `None` is returned. If the feature does not have an attribute `gdf`, an exception
+        is raised.
+
+        The layer is styled using the `feature.style_layer` method.
+
+        Args:
+            feature (object): The feature to create the layer from.
+            layer_name (str): The name of the layer.
+
+        Returns:
+            ipyleaflet.GeoJSON: The styled layer, represented as a GeoJSON object.
+
+        Raises:
+            Exception: If the feature is invalid or does not have an attribute `gdf`.
+        """
+        logger.info(f"Creating layer from feature: {feature}")
+        logger.info(f"Creating layer from feature.gdf: {feature.gdf}")
         if hasattr(feature, "gdf"):
             if feature.gdf.empty:
                 logger.warning("Cannot add an empty geodataframe layer to the map.")
@@ -762,7 +721,6 @@ class CoastSeg_Map:
             raise Exception(
                 f"Invalid feature or no feature provided. Cannot create layer.{type(feature)}"
             )
-
         # convert layer to GeoJson and style it accordingly
         styled_layer = feature.style_layer(layer_geojson, layer_name)
         return styled_layer
@@ -791,13 +749,6 @@ class CoastSeg_Map:
         logger.info(f"Added ID to delete_set: {self.delete_set}")
         # create new layer of rois selected for deletion
         layer_name = ROI.LAYER_NAME
-        # delete_layer = GeoJSON(
-        #     data=self.convert_delete_set_to_geojson(
-        #         self.delete_set, layer_name=layer_name
-        #     ),
-        #     name=self.DELETE_LAYER_NAME,
-        #     hover_style={"fillColor": "red", "fillOpacity": 0.1, "color": "red"},
-        # )
         delete_layer = GeoJSON(
             data=self.convert_selected_set_to_geojson(
                 self.delete_set,
@@ -807,7 +758,6 @@ class CoastSeg_Map:
             name=self.DELETE_LAYER_NAME,
             hover_style={"fillColor": "red", "fillOpacity": 0.1, "color": "red"},
         )
-
         logger.info(f"delete_layer: {delete_layer}")
         self.replace_layer_by_name(
             self.DELETE_LAYER_NAME,
@@ -932,23 +882,19 @@ class CoastSeg_Map:
             on_hover=self.update_roi_html,
         )
 
-    def save_feature_to_file(
-        self,
-        feature: ROI,
-        feature_type: str = "",
-    ):
-        exception_handler.can_feature_save_to_file(feature, feature_type)
+    def save_feature_to_file(self, feature: ROI, filename: str = "ROI.geojson"):
         if isinstance(feature, ROI):
+            if feature.gdf.empty:
+                logger.error(f"No ROIs loaded on the map. {feature.gdf}")
+                raise Exception("No ROIs loaded on the map")
             # raise exception if no rois were selected
             exception_handler.check_selected_set(self.selected_set)
-            feature.gdf[feature.gdf["id"].isin(self.selected_set)].to_file(
-                feature.filename, driver="GeoJSON"
+            logger.info(
+                f"feature.gdf.loc[self.selected_set]{feature.gdf.loc[self.selected_set]}"
             )
-        else:
-            logger.info(f"Saving feature type( {feature}) to file")
-            feature.gdf.to_file(feature.filename, driver="GeoJSON")
-        print(f"Save {feature.LAYER_NAME} to {feature.filename}")
-        logger.info(f"Save {feature.LAYER_NAME} to {feature.filename}")
+            feature.gdf.loc[self.selected_set].to_file(filename, driver="GeoJSON")
+        print(f"Save {feature.LAYER_NAME} to {filename}")
+        logger.info(f"Save {feature.LAYER_NAME} to {filename}")
 
     def convert_selected_set_to_geojson(
         self, selected_set: set, layer_name: str = "", color: str = "blue"
