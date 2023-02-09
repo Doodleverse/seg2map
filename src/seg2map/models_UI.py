@@ -105,12 +105,6 @@ class UI_Models:
             "EnviroAtlas_RGB_6class_7576909",
             "AAAI-Buildings_RGB_7class_7607895",
         ]
-        self.five_band_models = [
-        ]
-        self.MNDWI_models = [
-        ]
-        self.NDWI_models = [
-        ]
 
         # Declare widgets and on click callbacks
         self._create_HTML_widgets()
@@ -293,12 +287,6 @@ class UI_Models:
     def handle_model_input_change(self, change):
         if change["new"] == "RGB":
             self.model_dropdown.options = self.RGB_models
-        if change["new"] == "MNDWI":
-            self.model_dropdown.options = self.MNDWI_models
-        if change["new"] == "NDWI":
-            self.model_dropdown.options = self.NDWI_models
-        if change["new"] == "RGB+MNDWI+NDWI":
-            self.model_dropdown.options = self.five_band_models
 
     @run_model_view.capture(clear_output=True)
     def run_model_button_clicked(self, button):
