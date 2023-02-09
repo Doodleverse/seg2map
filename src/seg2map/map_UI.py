@@ -58,16 +58,16 @@ def create_file_chooser(callback, title: str = None):
 
 class UI:
     # all instances of UI will share the same debug_view
-    # this means that UI and coastseg_map must have a 1:1 relationship
-    # Output widget used to print messages and exceptions created by CoastSeg_Map
+    # this means that UI and seg2map must have a 1:1 relationship
+    # Output widget used to print messages and exceptions created by Seg2Map
     debug_view = Output(layout={"border": "1px solid black"})
     # Output widget used to print messages and exceptions created by download progress
     download_view = Output(layout={"border": "1px solid black"})
     settings_messages = Output(layout={"border": "1px solid black"})
 
-    def __init__(self, coastseg_map):
-        # save an instance of coastseg_map
-        self.coastseg_map = coastseg_map
+    def __init__(self, seg2map):
+        # save an instance of Seg2Map
+        self.seg2map = seg2map
         # button styles
         self.remove_style = dict(button_color="red")
         self.load_style = dict(button_color="#69add1")
@@ -112,7 +112,7 @@ class UI:
         )
         update_settings_btn.on_click(self.update_settings_btn_clicked)
         self.settings_html = HTML()
-        self.settings_html.value = self.get_settings_html(self.coastseg_map.settings)
+        self.settings_html.value = self.get_settings_html(self.seg2map.settings)
         view_settings_vbox = VBox([self.settings_html, update_settings_btn])
         return view_settings_vbox
 
@@ -175,37 +175,6 @@ class UI:
         img_type_vbox = HBox([instr, self.img_type_radio])
         return img_type_vbox
 
-    def save_to_file_buttons(self):
-        # save to file buttons
-        save_instr = HTML(
-            value="<h2>Save to file</h2>\
-                Save feature on the map to a geojson file.\
-                <br>Geojson file will be saved to Seg2Map directory.\
-            ",
-            layout=Layout(padding="0px"),
-        )
-
-        self.save_radio = RadioButtons(
-            options=[
-                "ROI",
-            ],
-            value="ROI",
-            description="",
-            disabled=False,
-        )
-
-        self.save_button = Button(
-            description=f"Save {self.save_radio.value} to file", style=self.save_style
-        )
-        self.save_button.on_click(self.save_to_file_btn_clicked)
-
-        def save_radio_changed(change):
-            self.save_button.description = f"Save {str(change['new'])} to file"
-
-        self.save_radio.observe(save_radio_changed, "value")
-        save_vbox = VBox([save_instr, self.save_radio, self.save_button])
-        return save_vbox
-
     def remove_buttons(self):
         # define remove feature radio box button
         remove_instr = HTML(
@@ -259,11 +228,8 @@ class UI:
         self.instr_download_roi = HTML(
             value="<h2><b>Download Imagery</b></h2> \
                 <li><b>You must click an ROI on the map before you can download ROIs</b> \
-                <li>Scroll past the map to see the download progress \
-                </br><h3><b><u>Where is my data?</u></b></br></h3> \
-                <li>The data you downloaded will be in the 'data' folder in the main CoastSeg directory</li>\
-                Each ROI you downloaded will have its own folder with the ROI's ID and\
-                </br>the time it was downloaded in the folder name\
+                <li>The downloaded imagery will be saved to the 'data' directory</li>\
+                The folder name for each downloaded ROI will consist of the ROI's ID and the time of download.\
                 </br><b>Example</b>: 'ID_1_datetime11-03-22__02_33_22'</li>\
                 ",
             layout=Layout(margin="0px 0px 0px 5px"),
@@ -273,21 +239,49 @@ class UI:
             value="<h2><b>Load and Save Config Files</b></h2>\
                 <b>Load Config</b>: Load ROIs from file: 'config_gdf.geojson'\
                 <li>'config.json' must be in the same directory as 'config_gdf.geojson'.</li>\
-                <b>Save Config</b>: Saves rois, shorelines, transects and bounding box to file: 'config_gdf.geojson'\
+                <b>Save Config</b>: Saves the state of the map to file: 'config_gdf.geojson'\
                 ",
             layout=Layout(margin="0px 5px 0px 5px"),  # top right bottom left
         )
 
+    def get_file_controls(self):
+        # define remove feature radio box button
+        instr = HTML(
+            value="<h2>Load & Save GeoJSON Files</h2>",
+            layout=Layout(padding="0px"),
+        )
+        self.load_file_button = Button(
+            description=f"Load GeoJSON file",
+            icon="fa-file-o",
+            style=self.load_style,
+        )
+        self.load_file_button.on_click(self.load_feature_from_file)
+
+        self.save_button = Button(description=f"Save to GeoJSON", style=self.save_style)
+        self.save_button.on_click(self.save_to_file_btn_clicked)
+        control_box = VBox(
+            [
+                instr,
+                self.load_file_button,
+                self.save_button,
+            ]
+        )
+        return control_box
+
     def create_dashboard(self):
         """creates a dashboard containing all the buttons, instructions and widgets organized together."""
         # create settings controls
+        files_controls = self.get_file_controls()
         settings_controls = self.get_settings_vbox()
         remove_buttons = self.remove_buttons()
-        save_to_file_buttons = self.save_to_file_buttons()
+        self.save_button = Button(
+            description=f"Save ROIs to file", style=self.save_style
+        )
+        self.save_button.on_click(self.save_to_file_btn_clicked)
 
         save_vbox = VBox(
             [
-                save_to_file_buttons,
+                files_controls,
                 remove_buttons,
             ]
         )
@@ -310,8 +304,8 @@ class UI:
         # in this row prints are rendered with UI.debug_view
         row_3 = HBox([self.clear_debug_button, UI.debug_view])
         self.error_row = HBox([])
-        self.row_4 = HBox([])
-        row_5 = HBox([self.coastseg_map.map])
+        self.file_chooser_row = HBox([])
+        row_5 = HBox([self.seg2map.map])
         row_6 = HBox([self.clear_downloads_button, UI.download_view])
 
         return display(
@@ -319,7 +313,7 @@ class UI:
             row_1,
             row_3,
             self.error_row,
-            self.row_4,
+            self.file_chooser_row,
             row_5,
             row_6,
         )
@@ -327,26 +321,11 @@ class UI:
     @debug_view.capture(clear_output=True)
     def update_settings_btn_clicked(self, btn):
         UI.debug_view.clear_output(wait=True)
-        # Display the settings currently loaded into coastseg_map
+        # Display the settings currently loaded into Seg2Map
         try:
-            self.settings_html.value = self.get_settings_html(
-                self.coastseg_map.settings
-            )
+            self.settings_html.value = self.get_settings_html(self.seg2map.settings)
         except Exception as error:
-            exception_handler.handle_exception(error, self.coastseg_map.warning_box)
-
-    @debug_view.capture(clear_output=True)
-    def load_button_clicked(self, btn):
-        UI.debug_view.clear_output(wait=True)
-        self.coastseg_map.map.default_style = {"cursor": "wait"}
-        try:
-            if "shoreline" in btn.description.lower():
-                print("Finding Shoreline")
-                self.coastseg_map.load_feature_on_map("shoreline")
-        except Exception as error:
-            # renders error message as a box on map
-            exception_handler.handle_exception(error, self.coastseg_map.warning_box)
-        self.coastseg_map.map.default_style = {"cursor": "default"}
+            exception_handler.handle_exception(error, self.seg2map.warning_box)
 
     @settings_messages.capture(clear_output=True)
     def save_settings_clicked(self, btn):
@@ -372,37 +351,35 @@ class UI:
         elif not os.path.exists(sitename_path):
             print(f"{sitename} will be created at {sitename_path}")
         try:
-            self.coastseg_map.save_settings(**settings)
-            self.settings_html.value = self.get_settings_html(
-                self.coastseg_map.settings
-            )
+            self.seg2map.save_settings(**settings)
+            self.settings_html.value = self.get_settings_html(self.seg2map.settings)
         except Exception as error:
             # renders error message as a box on map
-            exception_handler.handle_exception(error, self.coastseg_map.warning_box)
+            exception_handler.handle_exception(error, self.seg2map.warning_box)
 
     @download_view.capture(clear_output=True)
     def download_button_clicked(self, btn):
         UI.download_view.clear_output()
         UI.debug_view.clear_output()
-        self.coastseg_map.map.default_style = {"cursor": "wait"}
+        self.seg2map.map.default_style = {"cursor": "wait"}
         UI.debug_view.append_stdout("Scroll down past map to see download progress.")
         try:
             self.download_button.disabled = True
             try:
-                self.coastseg_map.download_imagery()
+                self.seg2map.download_imagery()
             except Exception as error:
                 # renders error message as a box on map
-                exception_handler.handle_exception(error, self.coastseg_map.warning_box)
+                exception_handler.handle_exception(error, self.seg2map.warning_box)
         except google_auth_exceptions.RefreshError as exception:
             print(exception)
             exception_handler.handle_exception(
                 error,
-                self.coastseg_map.warning_box,
+                self.seg2map.warning_box,
                 title="Authentication Error",
                 msg="Please authenticate with Google using the cell above: \n Authenticate and Initialize with Google Earth Engine (GEE)",
             )
         self.download_button.disabled = False
-        self.coastseg_map.map.default_style = {"cursor": "default"}
+        self.seg2map.map.default_style = {"cursor": "default"}
 
     def clear_row(self, row: HBox):
         """close widgets in row/column and clear all children
@@ -419,68 +396,30 @@ class UI:
         def load_callback(filechooser: FileChooser) -> None:
             try:
                 if filechooser.selected:
-                    self.coastseg_map.load_configs(filechooser.selected)
+                    self.seg2map.load_configs(filechooser.selected)
                     self.settings_html.value = self.get_settings_html(
-                        self.coastseg_map.settings
+                        self.seg2map.settings
                     )
             except Exception as error:
                 # renders error message as a box on map
-                exception_handler.handle_exception(error, self.coastseg_map.warning_box)
+                exception_handler.handle_exception(error, self.seg2map.warning_box)
 
         # create instance of chooser that calls load_callback
         file_chooser = create_file_chooser(load_callback)
-        # clear row and close all widgets in row_4 before adding new file_chooser
-        self.clear_row(self.row_4)
-        # add instance of file_chooser to row 4
-        self.row_4.children = [file_chooser]
+        # clear row and close all widgets in file_chooser_row before adding new file_chooser
+        self.clear_row(self.file_chooser_row)
+        # add instance of file_chooser to file_chooser_row
+        self.file_chooser_row.children = [file_chooser]
 
     @debug_view.capture(clear_output=True)
     def on_save_config_clicked(self, button):
         try:
             print("Save config clicked")
-            self.coastseg_map.save_config()
+            self.seg2map.save_config()
             print("Done!")
         except Exception as error:
             # renders error message as a box on map
-            exception_handler.handle_exception(error, self.coastseg_map.warning_box)
-
-    @debug_view.capture(clear_output=True)
-    def load_feature_from_file(self, btn):
-        # Prompt user to select a geojson file
-        def load_callback(filechooser: FileChooser) -> None:
-            try:
-                if filechooser.selected:
-                    if "bbox" in btn.description.lower():
-                        print(
-                            f"Loading bounding box from file: {os.path.abspath(filechooser.selected)}"
-                        )
-                        self.coastseg_map.load_feature_on_map(
-                            "bbox", os.path.abspath(filechooser.selected)
-                        )
-                    if "rois" in btn.description.lower():
-                        print(
-                            f"Loading ROIs from file: {os.path.abspath(filechooser.selected)}"
-                        )
-                        self.coastseg_map.load_feature_on_map(
-                            "rois", os.path.abspath(filechooser.selected)
-                        )
-            except Exception as error:
-                # renders error message as a box on map
-                exception_handler.handle_exception(error, self.coastseg_map.warning_box)
-
-        # change title of filechooser based on feature selected
-        title = "Select a geojson file"
-        # create instance of chooser that calls load_callback
-        if "bbox" in btn.description.lower():
-            title = "Select bounding box geojson file"
-        if "rois" in btn.description.lower():
-            title = "Select ROI geojson file"
-        # create instance of chooser that calls load_callback
-        file_chooser = create_file_chooser(load_callback, title=title)
-        # clear row and close all widgets in row_4 before adding new file_chooser
-        self.clear_row(self.row_4)
-        # add instance of file_chooser to row 4
-        self.row_4.children = [file_chooser]
+            exception_handler.handle_exception(error, self.seg2map.warning_box)
 
     @debug_view.capture(clear_output=True)
     def remove_feature_from_map(self, btn):
@@ -488,35 +427,53 @@ class UI:
         try:
             if "rois" in btn.description.lower():
                 print(f"Removing ROIs")
-                self.coastseg_map.launch_delete_box(self.coastseg_map.remove_box)
-                # self.coastseg_map.remove_all_rois()
+                self.seg2map.launch_delete_box(self.seg2map.remove_box)
+                # self.Seg2Map.remove_all_rois()
         except Exception as error:
             # renders error message as a box on map
-            exception_handler.handle_exception(error, self.coastseg_map.warning_box)
+            exception_handler.handle_exception(error, self.seg2map.warning_box)
+
+    @debug_view.capture(clear_output=True)
+    def load_feature_from_file(self, btn):
+        # Prompt user to select a geojson file
+        def file_chooser_callback(filechooser: FileChooser) -> None:
+            try:
+                if filechooser.selected:
+                    print(
+                        f"Loading ROIs from file: {os.path.abspath(filechooser.selected)}"
+                    )
+                    self.seg2map.load_feature_on_map(
+                        file=os.path.abspath(filechooser.selected)
+                    )
+            except Exception as error:
+                # renders error message as a box on map
+                exception_handler.handle_exception(error, self.seg2map.warning_box)
+
+        # create instance of chooser that calls callsfile_chooser_callback
+        file_chooser = create_file_chooser(
+            file_chooser_callback, title="Select a geojson file"
+        )
+        # clear row and close all widgets in self.file_chooser_row before adding new file_chooser
+        self.clear_row(self.file_chooser_row)
+        # add instance of file_chooser to row 4
+        self.file_chooser_row.children = [file_chooser]
 
     @debug_view.capture(clear_output=True)
     def save_to_file_btn_clicked(self, btn):
         UI.debug_view.clear_output(wait=True)
         try:
-            if "bbox" in btn.description.lower():
-                print(f"Saving bounding box to file")
-                self.coastseg_map.save_feature_to_file(
-                    self.coastseg_map.bbox, "bounding box"
-                )
-            if "rois" in btn.description.lower():
-                print(f"Saving ROIs to file")
-                self.coastseg_map.save_feature_to_file(self.coastseg_map.rois, "ROI")
+            self.seg2map.save_feature_to_file(self.seg2map.rois)
         except Exception as error:
             # renders error message as a box on map
-            exception_handler.handle_exception(error, self.coastseg_map.warning_box)
+            exception_handler.handle_exception(error, self.seg2map.warning_box)
 
     @debug_view.capture(clear_output=True)
     def remove_all_from_map(self, btn):
         try:
-            self.coastseg_map.remove_all()
+            self.seg2map.remove_all()
         except Exception as error:
             # renders error message as a box on map
-            exception_handler.handle_exception(error, self.coastseg_map.warning_box)
+            exception_handler.handle_exception(error, self.seg2map.warning_box)
 
     def clear_debug_view(self, btn):
         UI.debug_view.clear_output()

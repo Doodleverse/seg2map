@@ -33,10 +33,9 @@ from ipywidgets import HTML
 logger = logging.getLogger(__name__)
 
 
-
 def generate_random_string(avoid_list=[]):
     alphanumeric = string.ascii_letters + string.digits
-    random_string = ''.join(random.choice(alphanumeric) for i in range(6))
+    random_string = "".join(random.choice(alphanumeric) for i in range(6))
     if random_string in avoid_list:
         return generate_random_string(avoid_list)
     return random_string
@@ -285,7 +284,7 @@ def extract_roi_by_id(gdf: gpd.geodataframe, roi_id: int) -> gpd.geodataframe:
 
 def get_area(polygon: dict) -> float:
     "Calculates the area of the geojson polygon using the same method as geojson.io"
-    logger.info("get_area")
+    logger.info(f"get_area: {polygon}")
     return round(area(polygon), 3)
 
 
@@ -423,6 +422,52 @@ def read_geojson_file(geojson_file: str) -> dict:
     with open(geojson_file) as f:
         data = geojson.load(f)
     return data
+
+
+def create_roi_id(current_ids: list[str], new_id: str = None) -> str:
+    """create a new id that does not exist in the current_ids. If the new_id provided does
+    exist within the array return None
+    Args:
+        current_ids (list[str]): list of ids
+        new_id (str, optional): id If not provided one will be created. Defaults to None.
+
+    Returns:
+        str: id that is not in current_ids or None if it exists within current_ids
+    """
+    if new_id is None:
+        new_id = "1" if current_ids == [] else str(int(max(current_ids)) + 1)
+
+    logger.info(f"New id {new_id}")
+    if new_id not in current_ids:
+        return new_id
+    else:
+        return None
+
+
+def create_ids_list(current_ids: list[str], new_ids: Union[str, list] = None) -> list:
+    """Add new ids to the current_ids only if none of the ids exist in current_ids. If the new_id provided does
+    exist within the current_ids return the original current_ids.
+    Args:
+        current_ids (list[str]): list of ids
+        new_id (str, optional): id. Defaults to None.
+
+    Returns:
+        str: id that is not in current_ids or None if it exists within current_ids
+    """
+    import copy
+
+    current_ids = copy.deepcopy(current_ids)
+    # convert string to list so it can converted into a set later
+    if isinstance(new_ids, str):
+        new_ids = [new_ids]
+
+    # cannot add new ids to current ids if any already exist
+    if not set(new_ids).issubset(set(current_ids)):
+        logger.info(f"Newly added ids: {new_ids} to {current_ids}")
+        current_ids.extend(new_ids)
+
+    logger.info(f"Ids already in current_ids: {set(current_ids)-set(new_ids)}")
+    return current_ids
 
 
 def read_gpd_file(filename: str) -> gpd.GeoDataFrame:
