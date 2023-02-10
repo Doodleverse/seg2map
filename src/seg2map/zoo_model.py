@@ -358,6 +358,65 @@ class Zoo_Model:
                 sample_filenames = sorted(glob(sample_direc + os.sep + "*.png"))
         return sample_filenames
 
+    def run_model(
+        self,
+        model_implementation: str,
+        session: str,
+        directory: str,
+        model_name: str,
+        use_GPU: str,
+        use_otsu: bool,
+        use_tta: bool,
+    ):
+        logger.info(f"ROI directory: {directory}")
+        logger.info(f"session name: {session}")
+        logger.info(f"model_name: {model_name}")
+        logger.info(f"model_implementation: {model_implementation}")
+
+        self.download_model(model_implementation, model_name)
+        weights_list = self.get_weights_list(model_implementation)
+
+        # Load the model from the config files
+        model, model_list, config_files, model_types = self.get_model(weights_list)
+        metadatadict = self.get_metadatadict(weights_list, config_files, model_types)
+
+        # For each year
+        # make a model_settings{year}.json
+        # Apply model on dir which calls compute_segmentation
+        # move files
+        # delete old out directory
+        # create orthomoasic
+
+        # this function expects a multiband directory be sure to test with ROI directory
+        seg_files_per_year = common.get_seg_files_by_year(directory)
+        for year in seg_files_per_year.keys():
+            sample_direc = seg_files_per_year[year]["filepath"]
+            logger.info(f"Model outputs will be saved to { sample_direc}")
+            # need to make the list of jpgs compataible with get_files_for_seg
+            # run_model_on_dir
+            # pass out as the output directory name
+            # source filepath,'out'
+            # dst = create sub dir of year in session directory
+            # move_segmentations(src,dst)
+
+        model_dict = {
+            "sample_direc": None,
+            "use_GPU": use_GPU,
+            "implementation": model_implementation,
+            "model_type": model_name,
+            "otsu": False,
+            "tta": False,
+        }
+
+        # # Compute the segmentation
+        self.compute_segmentation(
+            model_dict["sample_direc"],
+            model_list,
+            metadatadict,
+            use_tta,
+            use_otsu,
+        )
+
     def compute_segmentation(
         self,
         sample_direc: str,

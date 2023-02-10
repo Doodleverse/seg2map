@@ -33,6 +33,60 @@ from ipywidgets import HTML
 logger = logging.getLogger(__name__)
 
 
+def get_seg_files_by_year(dir_path: str) -> dict:
+    """
+    Returns a dictionary of segmentation files organized by year.
+
+    The function searches the specified directory and its subdirectories for
+    directories that are named as 4-digit years. For each year directory, it
+    finds all `.jpg` files that do not contain the string "merged_multispectral".
+
+    The returned dictionary has the year as the key and a dictionary as the value.
+    The value dictionary has two keys: "file_path" and "jpgs". "file_path" is the
+    full path of the year directory, and "jpgs" is a list of the full paths of
+    the `.jpg` files that meet the criteria.
+
+    Args:
+    - dir_path (str): The directory to search for segmentation files.
+
+    Returns:
+    - dict: A dictionary of segmentation files organized by year.
+    """
+    files_per_year = {}
+    for root, dirs, files in os.walk(dir_path):
+        if root == dir_path:
+            continue
+        folder_name = os.path.basename(root)
+        if not re.match(r"^\d{4}$", folder_name):
+            continue
+        jpg_paths = glob.glob(os.path.join(root, "*.jpg"))
+        jpg_paths = [file for file in jpg_paths if "merged_multispectral" not in file]
+        files_per_year[folder_name] = {"file_path": root, "jpgs": jpg_paths}
+    return files_per_year
+
+
+# def delete_empty_directories(directory):
+#     for root, dirs, files in os.walk(directory, topdown=False):
+#         for dir in dirs:
+#             dir_path = os.path.join(root, dir)
+#             try:
+#                 os.rmdir(dir_path)
+#                 print(f"Deleted empty directory: {dir_path}")
+#             except OSError:
+#                 # If the directory is not empty, skip it
+#                 pass
+
+
+def create_directory(file_path: str, name: str) -> str:
+    new_directory = os.path.join(file_path, name)
+    # Check if the "sessions" directory exists
+    if not os.path.exists(new_directory):
+        # If the "sessions" directory does not exist, create it
+        os.makedirs(new_directory)
+
+    return new_directory
+
+
 def generate_random_string(avoid_list=[]):
     alphanumeric = string.ascii_letters + string.digits
     random_string = "".join(random.choice(alphanumeric) for i in range(6))
@@ -257,31 +311,6 @@ def get_colors(length: int) -> list:
     return cmap_list
 
 
-def extract_roi_by_id(gdf: gpd.geodataframe, roi_id: int) -> gpd.geodataframe:
-    """Returns geodataframe with a single ROI whose id matches roi_id.
-       If roi_id is None returns gdf
-
-    Args:
-        gdf (gpd.geodataframe): ROI geodataframe to extract ROI with roi_id from
-        roi_id (int): id of the ROI to extract
-    Raises:
-        exceptions.Id_Not_Found: if id doesn't exist in ROI's geodataframe or self.rois.gdf is empty
-    Returns:
-        gpd.geodataframe: ROI with id matching roi_id
-    """
-    if roi_id is None:
-        single_roi = gdf
-    else:
-        # Select a single roi by id
-        single_roi = gdf[gdf["id"].astype(str) == str(roi_id)]
-        # if the id was not found in the geodataframe raise an exception
-    if single_roi.empty:
-        logger.error(f"Id: {id} was not found in {gdf}")
-        raise exceptions.Id_Not_Found(id)
-    logger.info(f"single_roi: {single_roi}")
-    return single_roi
-
-
 def get_area(polygon: dict) -> float:
     "Calculates the area of the geojson polygon using the same method as geojson.io"
     logger.info(f"get_area: {polygon}")
@@ -422,52 +451,6 @@ def read_geojson_file(geojson_file: str) -> dict:
     with open(geojson_file) as f:
         data = geojson.load(f)
     return data
-
-
-def create_roi_id(current_ids: list[str], new_id: str = None) -> str:
-    """create a new id that does not exist in the current_ids. If the new_id provided does
-    exist within the array return None
-    Args:
-        current_ids (list[str]): list of ids
-        new_id (str, optional): id If not provided one will be created. Defaults to None.
-
-    Returns:
-        str: id that is not in current_ids or None if it exists within current_ids
-    """
-    if new_id is None:
-        new_id = "1" if current_ids == [] else str(int(max(current_ids)) + 1)
-
-    logger.info(f"New id {new_id}")
-    if new_id not in current_ids:
-        return new_id
-    else:
-        return None
-
-
-def create_ids_list(current_ids: list[str], new_ids: Union[str, list] = None) -> list:
-    """Add new ids to the current_ids only if none of the ids exist in current_ids. If the new_id provided does
-    exist within the current_ids return the original current_ids.
-    Args:
-        current_ids (list[str]): list of ids
-        new_id (str, optional): id. Defaults to None.
-
-    Returns:
-        str: id that is not in current_ids or None if it exists within current_ids
-    """
-    import copy
-
-    current_ids = copy.deepcopy(current_ids)
-    # convert string to list so it can converted into a set later
-    if isinstance(new_ids, str):
-        new_ids = [new_ids]
-
-    # cannot add new ids to current ids if any already exist
-    if not set(new_ids).issubset(set(current_ids)):
-        logger.info(f"Newly added ids: {new_ids} to {current_ids}")
-        current_ids.extend(new_ids)
-
-    logger.info(f"Ids already in current_ids: {set(current_ids)-set(new_ids)}")
-    return current_ids
 
 
 def read_gpd_file(filename: str) -> gpd.GeoDataFrame:

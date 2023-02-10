@@ -81,7 +81,6 @@ class UI_Models:
     # AAAI-Buildings
     # ortho_RGB_7class_7607895 https://zenodo.org/record/7607895
 
-
     def __init__(self):
         # Controls size of ROIs generated on map
         self.model_dict = {
@@ -92,18 +91,23 @@ class UI_Models:
             "otsu": False,
             "tta": False,
         }
-        # list of RGB and MNDWI models available
-        self.RGB_models = [
+        # list of RGB  models available
+        self.generic_landcover_models = [
+            "Chesappeake_RGB_7clas_7576904",
+            "OpenEarthNet_RGB_9class_7576894",
+            "DeepGlobe_RGB_7clas_7576898",
+            "EnviroAtlas_RGB_6class_7576909",
+            "AAAI-Buildings_RGB_2class_7607895",
+        ]
+        # list of RGB  models available
+        self.coastal_landcover_models = [
             "FloodNet_RGB_10class_7566797",
             "FloodNet_RGB_10class_7566810",
             "CoastTrain_RGB_8class_7574784",
             "CoastTrain_RGB_5class_7566992",
             "CoastTrain_RGB_8class_7570583",
             "Chesappeake_RGB_7clas_7576904",
-            "OpenEarthNet_RGB_9class_7576894",
-            "DeepGlobe_RGB_7clas_7576898",
-            "EnviroAtlas_RGB_6class_7576909",
-            "AAAI-Buildings_RGB_7class_7607895",
+            "AAAI-Buildings_RGB_2class_7607895",
         ]
 
         # Declare widgets and on click callbacks
@@ -113,7 +117,7 @@ class UI_Models:
 
     def create_dashboard(self):
         model_choices_box = HBox(
-            [self.model_input_dropdown, self.model_dropdown, self.model_implementation]
+            [self.model_type_dropdown, self.model_dropdown, self.model_implementation]
         )
         checkboxes = HBox([self.GPU_checkbox, self.otsu_radio, self.tta_radio])
         instr_vbox = VBox(
@@ -167,21 +171,21 @@ class UI_Models:
         )
         self.tta_radio.observe(self.handle_tta, "value")
 
-        self.model_input_dropdown = ipywidgets.RadioButtons(
-            options=["RGB", "MNDWI", "NDWI", "RGB+MNDWI+NDWI"],
-            value="RGB",
+        self.model_type_dropdown = ipywidgets.RadioButtons(
+            options=["Generic Landcover", "Coastal Landcover"],
+            value="Generic Landcover",
             description="Model Input:",
             disabled=False,
         )
-        self.model_input_dropdown.observe(self.handle_model_input_change, names="value")
+        self.model_type_dropdown.observe(self.handle_model_type_change, names="value")
 
         self.model_dropdown = ipywidgets.RadioButtons(
-            options=self.RGB_models,
-            value=self.RGB_models[0],
+            options=self.generic_landcover_models,
+            value=self.generic_landcover_models[0],
             description="Select Model:",
             disabled=False,
         )
-        self.model_dropdown.observe(self.handle_model_type, "value")
+        self.model_dropdown.observe(self.handle_model_dropdown, "value")
 
         # Allow user to enable GPU
         self.GPU_checkbox = ipywidgets.widgets.Checkbox(
@@ -229,30 +233,26 @@ class UI_Models:
         )
 
         self.instr_select_images = HTML(
-            value="<b>1. Select Images Button</b> \
+            value='<b>1. Select Images Button</b> \
                 <br> - This will open a pop up window where the RGB folder must be selected.<br>\
-                    - The model will be applied to the 'model input' folder selected and the model outputs will be generated within a subdirectory\
-                    called 'out'<br>\
-            - <span style=\"background-color:yellow;color: black;\">WARNING :</span> You will not be able to see the files within the folder you select.<br>\
-            ",
+            - <span style="background-color:yellow;color: black;">WARNING :</span> You will not be able to see the files within the folder you select.<br>\
+            ',
             layout=Layout(margin="0px 0px 0px 20px"),
         )
 
         self.instr_run_model = HTML(
-            value="<b>2. Run Model Button</b> \
-                <br> - Make sure to click Select Images Button or Use Data Button.<br>\
-                    - The model will be applied to the selected folder and the model outputs will be generated within a subdirectory\
-                    called 'out'<br>\
-            - <span style=\"background-color:yellow;color: black;\">WARNING :</span> You should not run multiple models on the same folder. Otherwise not all the model outputs\
+            value='<b>2. Run Model Button</b> \
+                <br> - Make sure to click Select Images Button<br>\
+            - <span style="background-color:yellow;color: black;">WARNING :</span> You should not run multiple models on the same folder. Otherwise not all the model outputs\
             will be saved to the folder.<br>\
-            ",
+            ',
             layout=Layout(margin="0px 0px 0px 20px"),
         )
 
     def handle_model_implementation(self, change):
         self.model_dict["implementation"] = change["new"]
 
-    def handle_model_type(self, change):
+    def handle_model_dropdown(self, change):
         # 2 class model has not been selected disable otsu threhold
         if "2class" not in change["new"]:
             if self.otsu_radio.value == "Enabled":
@@ -284,9 +284,11 @@ class UI_Models:
         if change["new"] == "Disabled":
             self.model_dict["tta"] = False
 
-    def handle_model_input_change(self, change):
-        if change["new"] == "RGB":
-            self.model_dropdown.options = self.RGB_models
+    def handle_model_type_change(self, change):
+        if change["new"] == "Generic Landcover":
+            self.model_dropdown.options = self.generic_landcover_models
+        if change["new"] == "Coastal Landcover":
+            self.model_dropdown.options = self.coastal_landcover_models
 
     @run_model_view.capture(clear_output=True)
     def run_model_button_clicked(self, button):
@@ -302,66 +304,23 @@ class UI_Models:
             # Disable run and open results buttons while the model is running
             self.open_results_button.disabled = True
             self.run_model_button.disabled = True
-            model_choice = self.model_dict["implementation"]
+            model_implementation = self.model_dict["implementation"]
             zoo_model_instance = zoo_model.Zoo_Model()
-
-            logger.info(
-                f"\nolder selected directory of RGBs: {self.model_dict['sample_direc']}\n"
-            )
+            logger.info(f"\nSelected directory: {self.model_dict['sample_direc']}\n")
             # get path to RGB directory for models
             # all other necessary files are relative to RGB directory
             RGB_path = common.get_RGB_in_path(self.model_dict["sample_direc"])
             self.model_dict["sample_direc"] = RGB_path
-            print(
-                f"current selected directory of RGBs: {self.model_dict['sample_direc']}"
-            )
-
-            # convert RGB to MNDWI or NDWI
-            output_type = self.model_input_dropdown.value
-            print(f"Selected output type: {output_type}")
-            if output_type in ["MNDWI", "NDWI"]:
-                RGB_path = self.model_dict["sample_direc"]
-                output_path = os.path.dirname(RGB_path)
-                # default filetype is NIR and if NDWI is selected else filetype to SWIR
-                filetype = "NIR" if output_type == "NDWI" else "SWIR"
-                infrared_path = os.path.join(output_path, filetype)
-                zoo_model.RGB_to_infrared(
-                    RGB_path, infrared_path, output_path, output_type
-                )
-                # newly created imagery (NDWI or MNDWI) is located at output_path
-                output_path = os.path.join(output_path, output_type)
-                # set sample_direc to hold location of NDWI imagery
-                self.model_dict["sample_direc"] = output_path
-                print(f"Model outputs will be saved to {output_path}")
-            elif output_type in ["RGB+MNDWI+NDWI"]:
-                RGB_path = self.model_dict["sample_direc"]
-                output_path = os.path.dirname(RGB_path)
-                NIR_path = os.path.join(output_path, "NIR")
-                NDWI_path = zoo_model.RGB_to_infrared(
-                    RGB_path, NIR_path, output_path, "NDWI"
-                )
-                SWIR_path = os.path.join(output_path, "SWIR")
-                MNDWI_path = zoo_model.RGB_to_infrared(
-                    RGB_path, SWIR_path, output_path, "MNDWI"
-                )
-                five_band_path = os.path.join(output_path, "five_band")
-                if not os.path.exists(five_band_path):
-                    os.mkdir(five_band_path)
-                five_band_path = zoo_model.get_five_band_imagery(
-                    RGB_path, MNDWI_path, NDWI_path, five_band_path
-                )
-                # set sample_direc to hold location of NDWI imagery
-                self.model_dict["sample_direc"] = five_band_path
-                print(f"Model outputs will be saved to {five_band_path}")
+            print(f"Selected directory: {self.model_dict['sample_direc']}")
 
             # specify dataset_id to download selected model
             dataset_id = self.model_dict["model_type"]
             use_otsu = self.model_dict["otsu"]
             use_tta = self.model_dict["tta"]
             # First download the specified model
-            zoo_model_instance.download_model(model_choice, dataset_id)
+            zoo_model_instance.download_model(model_implementation, dataset_id)
             # Get weights as list
-            weights_list = zoo_model_instance.get_weights_list(model_choice)
+            weights_list = zoo_model_instance.get_weights_list(model_implementation)
             # Load the model from the config files
             model, model_list, config_files, model_types = zoo_model_instance.get_model(
                 weights_list
