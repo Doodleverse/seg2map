@@ -8,7 +8,7 @@ import json
 import math
 from datetime import datetime
 import logging
-from typing import Union
+from typing import Union, List
 
 # Internal dependencies imports
 from src.seg2map import exception_handler
@@ -22,6 +22,8 @@ import geojson
 import matplotlib
 from leafmap import check_file_path
 import pandas as pd
+from osgeo import gdal
+
 
 from ipywidgets import ToggleButton
 from ipywidgets import HBox
@@ -33,36 +35,76 @@ from ipywidgets import HTML
 logger = logging.getLogger(__name__)
 
 
-def get_seg_files_by_year(dir_path: str) -> dict:
-    """
-    Returns a dictionary of segmentation files organized by year.
-
-    The function searches the specified directory and its subdirectories for
-    directories that are named as 4-digit years. For each year directory, it
-    finds all `.jpg` files that do not contain the string "merged_multispectral".
-
-    The returned dictionary has the year as the key and a dictionary as the value.
-    The value dictionary has two keys: "file_path" and "jpgs". "file_path" is the
-    full path of the year directory, and "jpgs" is a list of the full paths of
-    the `.jpg` files that meet the criteria.
+def gdal_translate_jpeg(
+    files: List[str],
+    translateoptions: str = "-of JPEG -co COMPRESS=JPEG -co TFW=YES -co QUALITY=100",
+):
+    """Convert TIFF files to JPEG files using GDAL.
 
     Args:
-    - dir_path (str): The directory to search for segmentation files.
+        files (List[str]): List of file paths to TIFF files to be converted.
+        translateoptions (str, optional): GDAL options for converting TIFF files to JPEG files. Defaults to "-of JPEG -co COMPRESS=JPEG -co TFW=YES -co QUALITY=100".
 
     Returns:
-    - dict: A dictionary of segmentation files organized by year.
+        List[str]: List of file paths to the newly created JPEG files.
     """
-    files_per_year = {}
+    new_files = []
+    for f in files:
+        jpg_file = f.replace(".tif", ".jpg")
+        if os.path.exists(jpg_file):
+            print(f"File: {jpg_file} already exists")
+        else:
+            dst = gdal.Translate(f.replace(".tif", ".jpg"), f, options=translateoptions)
+            new_files.append(f.replace(".tif", ".jpg"))
+            dst = None  # close and save ds
+    return new_files
+
+
+def move_files(src_dir: str, dst_dir: str, delete_src: bool = False) -> None:
+    """
+    Moves every file in a source directory to a destination directory, and has the option to delete the source directory when finished.
+
+    The function uses the `shutil` library to move the files from the source directory to the destination directory. If the `delete_src` argument is set to `True`, the function will delete the source directory after all the files have been moved.
+
+    Args:
+    - src_dir (str): The path of the source directory.
+    - dst_dir (str): The path of the destination directory.
+    - delete_src (bool, optional): A flag indicating whether to delete the source directory after the files have been moved. Default is `False`.
+
+    Returns:
+    - None
+    """
+    logger.info(f"Moving files from {src_dir} to dst_dir. Delete Source:{delete_src}")
+    if not os.path.exists(dst_dir):
+        os.makedirs(dst_dir)
+    for filename in os.listdir(src_dir):
+        src_file = os.path.join(src_dir, filename)
+        dst_file = os.path.join(dst_dir, filename)
+        shutil.move(src_file, dst_file)
+    if delete_src:
+        os.rmdir(src_dir)
+
+
+def get_matching_dirs(dir_path: str, pattern: str = r"^\d{4}$") -> List[str]:
+    """
+    Returns a list of directories that match the specified pattern.
+
+    The function searches the specified directory and its subdirectories for
+    directories that have names that match the specified pattern.
+
+    Args:
+    - dir_path (str): The directory to search for matching directories.
+    - pattern (str, optional): The pattern to match against the directory names. Default is "^\d{4}$".
+
+    Returns:
+    - List[str]: A list of the full paths of the matching directories.
+    """
+    matching_dirs = []
     for root, dirs, files in os.walk(dir_path):
-        if root == dir_path:
-            continue
         folder_name = os.path.basename(root)
-        if not re.match(r"^\d{4}$", folder_name):
-            continue
-        jpg_paths = glob.glob(os.path.join(root, "*.jpg"))
-        jpg_paths = [file for file in jpg_paths if "merged_multispectral" not in file]
-        files_per_year[folder_name] = {"file_path": root, "jpgs": jpg_paths}
-    return files_per_year
+        if re.match(pattern, folder_name):
+            matching_dirs.append(root)
+    return matching_dirs
 
 
 # def delete_empty_directories(directory):

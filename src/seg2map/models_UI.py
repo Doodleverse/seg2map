@@ -4,8 +4,8 @@ import glob
 import logging
 
 # internal python imports
-from coastseg import common
-from coastseg import zoo_model
+from src.seg2map import common
+from src.seg2map import zoo_model
 
 # external python imports
 import ipywidgets
@@ -61,8 +61,8 @@ def create_dir_chooser(callback, title: str = None):
 
 class UI_Models:
     # all instances of UI will share the same debug_view
-    model_view = Output(layout={"border": "1px solid black"})
-    run_model_view = Output(layout={"border": "1px solid black"})
+    model_view = Output()
+    run_model_view = Output()
     # FloodNet
     # uav_RGB_10class_7566797: https://zenodo.org/record/7566797
     # uav_RGB_10class_7566810: https://zenodo.org/record/7566810
@@ -93,27 +93,72 @@ class UI_Models:
         }
         # list of RGB  models available
         self.generic_landcover_models = [
-            "Chesappeake_RGB_7clas_7576904",
             "OpenEarthNet_RGB_9class_7576894",
-            "DeepGlobe_RGB_7clas_7576898",
+            "DeepGlobe_RGB_7class_7576898",
             "EnviroAtlas_RGB_6class_7576909",
             "AAAI-Buildings_RGB_2class_7607895",
+            "FloodNet_RGB_10class_7566797",
+            "FloodNet_RGB_10class_7566810",
         ]
         # list of RGB  models available
         self.coastal_landcover_models = [
-            "FloodNet_RGB_10class_7566797",
-            "FloodNet_RGB_10class_7566810",
-            "CoastTrain_RGB_8class_7574784",
+            "CoastTrain_RGB_2class_7574784",
             "CoastTrain_RGB_5class_7566992",
             "CoastTrain_RGB_8class_7570583",
-            "Chesappeake_RGB_7clas_7576904",
-            "AAAI-Buildings_RGB_2class_7607895",
-        ]
+            "Chesappeake_RGB_7class_7576904",
+            "NOAA_RGB_4_class_7628733",
+            "NOAA_RGB_4_class_7628733",
+        ]  # @todo add barrier islands model when its up
 
+        self.session_name = ""
+        self.inputs_directory = ""
         # Declare widgets and on click callbacks
         self._create_HTML_widgets()
         self._create_widgets()
         self._create_buttons()
+
+    def set_inputs_directory(self, full_path: str):
+        self.inputs_directory = os.path.abspath(full_path)
+
+    def get_inputs_directory(
+        self,
+    ):
+        return self.inputs_directory
+
+    def set_session_name(self, name: str):
+        self.session_name = str(name).strip()
+
+    def get_session_name(
+        self,
+    ):
+        return self.session_name
+
+    def get_session_selection(self):
+        output = Output()
+        self.session_name_text = ipywidgets.Text(
+            value="",
+            placeholder="Enter a session name",
+            description="Session Name:",
+            disabled=False,
+            style={"description_width": "initial"},
+        )
+
+        enter_button = ipywidgets.Button(description="Enter")
+
+        @output.capture(clear_output=True)
+        def enter_clicked(btn):
+            session_name = str(self.session_name_text.value).strip()
+            session_path = common.create_directory(os.getcwd(), "sessions")
+            new_session_path = os.path.join(session_path, session_name)
+            if os.path.exists(new_session_path):
+                print(f"Session {session_name} already exists at {new_session_path}")
+            elif not os.path.exists(new_session_path):
+                print(f"Session {session_name} will be created at {new_session_path}")
+                self.set_session_name(session_name)
+
+        enter_button.on_click(enter_clicked)
+        session_name_controls = HBox([self.session_name_text, enter_button])
+        return VBox([session_name_controls, output])
 
     def create_dashboard(self):
         model_choices_box = HBox(
@@ -122,26 +167,24 @@ class UI_Models:
         checkboxes = HBox([self.GPU_checkbox, self.otsu_radio, self.tta_radio])
         instr_vbox = VBox(
             [
-                self.instr_header,
-                self.line_widget,
                 self.instr_select_images,
                 self.instr_run_model,
             ]
         )
         self.file_row = HBox([])
         self.warning_row = HBox([])
+        run_model_box = HBox([self.run_model_button, self.open_results_button])
         display(
             checkboxes,
             model_choices_box,
+            self.get_session_selection(),
             instr_vbox,
             self.use_select_images_button,
-            self.line_widget,
             self.warning_row,
             self.file_row,
             UI_Models.model_view,
-            self.run_model_button,
+            run_model_box,
             UI_Models.run_model_view,
-            self.open_results_button,
         )
 
     def _create_widgets(self):
@@ -174,16 +217,18 @@ class UI_Models:
         self.model_type_dropdown = ipywidgets.RadioButtons(
             options=["Generic Landcover", "Coastal Landcover"],
             value="Generic Landcover",
-            description="Model Input:",
+            description="Model Type:",
             disabled=False,
+            style={"description_width": "initial"},
         )
         self.model_type_dropdown.observe(self.handle_model_type_change, names="value")
 
-        self.model_dropdown = ipywidgets.RadioButtons(
+        self.model_dropdown = ipywidgets.Dropdown(
             options=self.generic_landcover_models,
             value=self.generic_landcover_models[0],
             description="Select Model:",
             disabled=False,
+            style={"description_width": "initial"},
         )
         self.model_dropdown.observe(self.handle_model_dropdown, "value")
 
@@ -227,25 +272,15 @@ class UI_Models:
             value="____________________________________________________"
         )
 
-        self.instr_header = HTML(
-            value="<h4>Click ONE of the following buttons:</h4>",
-            layout=Layout(margin="0px 0px 0px 0px"),
-        )
-
         self.instr_select_images = HTML(
-            value='<b>1. Select Images Button</b> \
-                <br> - This will open a pop up window where the RGB folder must be selected.<br>\
-            - <span style="background-color:yellow;color: black;">WARNING :</span> You will not be able to see the files within the folder you select.<br>\
-            ',
+            value="<b>1. Select Images</b> \
+                <br> - Select an ROI directory",
             layout=Layout(margin="0px 0px 0px 20px"),
         )
 
         self.instr_run_model = HTML(
-            value='<b>2. Run Model Button</b> \
-                <br> - Make sure to click Select Images Button<br>\
-            - <span style="background-color:yellow;color: black;">WARNING :</span> You should not run multiple models on the same folder. Otherwise not all the model outputs\
-            will be saved to the folder.<br>\
-            ',
+            value="<b>2. Run Model </b> \
+                <br> - Click Select Images first, then click run model",
             layout=Layout(margin="0px 0px 0px 20px"),
         )
 
@@ -292,53 +327,46 @@ class UI_Models:
 
     @run_model_view.capture(clear_output=True)
     def run_model_button_clicked(self, button):
-        if self.model_dict["sample_direc"] is None:
+        session_name = self.get_session_name()
+        inputs_directory = self.get_inputs_directory()
+        if session_name == "":
             self.launch_error_box(
                 "Cannot Run Model",
-                "You must click 'Use Data Directory' or 'Select Images' First",
+                "Must enter a session name first",
             )
             return
-        else:
-            # gets GPU or CPU depending on whether use_GPU is True
-            zoo_model.get_GPU(self.model_dict["use_GPU"])
-            # Disable run and open results buttons while the model is running
-            self.open_results_button.disabled = True
-            self.run_model_button.disabled = True
-            model_implementation = self.model_dict["implementation"]
-            zoo_model_instance = zoo_model.Zoo_Model()
-            logger.info(f"\nSelected directory: {self.model_dict['sample_direc']}\n")
-            # get path to RGB directory for models
-            # all other necessary files are relative to RGB directory
-            RGB_path = common.get_RGB_in_path(self.model_dict["sample_direc"])
-            self.model_dict["sample_direc"] = RGB_path
-            print(f"Selected directory: {self.model_dict['sample_direc']}")
+        if inputs_directory == "":
+            self.launch_error_box(
+                "Cannot Run Model",
+                "Must click 'Select Images' first",
+            )
+            return
+        # Disable run and open results buttons while the model is running
+        self.open_results_button.disabled = True
+        self.run_model_button.disabled = True
 
-            # specify dataset_id to download selected model
-            dataset_id = self.model_dict["model_type"]
-            use_otsu = self.model_dict["otsu"]
-            use_tta = self.model_dict["tta"]
-            # First download the specified model
-            zoo_model_instance.download_model(model_implementation, dataset_id)
-            # Get weights as list
-            weights_list = zoo_model_instance.get_weights_list(model_implementation)
-            # Load the model from the config files
-            model, model_list, config_files, model_types = zoo_model_instance.get_model(
-                weights_list
-            )
-            metadatadict = zoo_model_instance.get_metadatadict(
-                weights_list, config_files, model_types
-            )
-            # # Compute the segmentation
-            zoo_model_instance.compute_segmentation(
-                self.model_dict["sample_direc"],
-                model_list,
-                metadatadict,
-                use_tta,
-                use_otsu,
-            )
-            # Enable run and open results buttons when model has executed
-            self.run_model_button.disabled = False
-            self.open_results_button.disabled = False
+        # gets GPU or CPU depending on whether use_GPU is True
+        use_GPU = self.model_dict["use_GPU"]
+        model_implementation = self.model_dict["implementation"]
+        model_name = self.model_dict["model_type"]
+        use_otsu = self.model_dict["otsu"]
+        use_tta = self.model_dict["tta"]
+
+        zoo_model.get_GPU(use_GPU)
+        zoo_model_instance = zoo_model.Zoo_Model()
+
+        zoo_model_instance.run_model(
+            model_implementation,
+            session_name=session_name,
+            src_directory=inputs_directory,
+            model_name=model_name,
+            use_GPU=use_GPU,
+            use_otsu=use_otsu,
+            use_tta=use_tta,
+        )
+        # Enable run and open results buttons when model has executed
+        self.run_model_button.disabled = False
+        self.open_results_button.disabled = False
 
     @run_model_view.capture(clear_output=True)
     def open_results_button_clicked(self, button):
@@ -371,16 +399,17 @@ class UI_Models:
     @model_view.capture(clear_output=True)
     def load_callback(self, filechooser: FileChooser) -> None:
         if filechooser.selected:
-            sample_direc = os.path.abspath(filechooser.selected)
-            print(f"The images in the folder will be segmented :\n{sample_direc} ")
-            jpgs = glob.glob1(sample_direc + os.sep, "*jpg")
-            if jpgs == []:
-                self.launch_error_box(
-                    "File Not Found",
-                    "The directory contains no jpgs! Please select a directory with jpgs.",
-                )
-            elif jpgs != []:
-                self.model_dict["sample_direc"] = sample_direc
+            inputs_directory = os.path.abspath(filechooser.selected)
+            for root, dirs, files in os.walk(inputs_directory):
+                # if any directory contains jpgs then set inputs directory to selected directory
+                jpgs = glob.glob(os.path.join(root, "*jpg"))
+                if len(jpgs) > 0:
+                    self.set_inputs_directory(inputs_directory)
+                    return
+            self.launch_error_box(
+                "File Not Found",
+                "The directory contains no jpgs! Please select a directory with jpgs.",
+            )
 
     @model_view.capture(clear_output=True)
     def use_select_images_button_clicked(self, button):

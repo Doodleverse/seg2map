@@ -1,10 +1,12 @@
 import os
+import re
 import glob
 import asyncio
 import platform
 import json
 import logging
-from coastseg import common
+from typing import List
+from src.seg2map import common
 import requests
 import skimage
 import aiohttp
@@ -13,7 +15,6 @@ import numpy as np
 from glob import glob
 import tqdm.asyncio
 import nest_asyncio
-from tensorflow.python.client import device_lib
 from skimage.io import imread
 from tensorflow.keras import mixed_precision
 from doodleverse_utils.prediction_imports import do_seg
@@ -27,6 +28,51 @@ from doodleverse_utils.model_imports import dice_coef_loss, iou_multi, dice_mult
 import tensorflow as tf
 
 logger = logging.getLogger(__name__)
+
+from time import perf_counter
+
+
+def time_func(func):
+    def wrapper(*args, **kwargs):
+        start = perf_counter()
+        result = func(*args, **kwargs)
+        end = perf_counter()
+        print(f"{func.__name__} took {end - start:.6f} seconds to run.")
+        return result
+
+    return wrapper
+
+
+def get_seg_files_by_year(dir_path: str) -> dict:
+    """
+    Returns a dictionary of segmentation files organized by year.
+
+    The function searches the specified directory and its subdirectories for
+    directories that are named as 4-digit years. For each year directory, it
+    finds all `.jpg` files that do not contain the string "merged_multispectral".
+
+    The returned dictionary has the year as the key and a dictionary as the value.
+    The value dictionary has two keys: "file_path" and "jpgs". "file_path" is the
+    full path of the year directory, and "jpgs" is a list of the full paths of
+    the `.jpg` files that meet the criteria.
+
+    Args:
+    - dir_path (str): The directory to search for segmentation files.
+
+    Returns:
+    - dict: A dictionary of segmentation files organized by year.
+    """
+    files_per_year = {}
+    for root, dirs, files in os.walk(dir_path):
+        if root == dir_path:
+            continue
+        folder_name = os.path.basename(root)
+        if not re.match(r"^\d{4}$", folder_name):
+            continue
+        jpg_paths = sorted(tf.io.gfile.glob(os.path.join(root, "*.jpg")))
+        jpg_paths = [file for file in jpg_paths if "merged_multispectral" not in file]
+        files_per_year[folder_name] = {"file_path": root, "jpgs": jpg_paths}
+    return files_per_year
 
 
 def get_five_band_imagery(
@@ -339,66 +385,136 @@ class Zoo_Model:
     def __init__(self):
         self.weights_direc = None
 
-    def get_files_for_seg(self, sample_direc: str) -> list:
-        """Returns list of files to be segmented
+    def get_files_for_seg(self, sample_direc: str, avoid_names: List[str] = []) -> list:
+        """
+        Returns a list of files to be segmented.
+
+        The function reads in the image filenames as either (`.npz`) OR (`.jpg`, or `.png`)
+        and returns a sorted list of the file paths.
+
         Args:
-            sample_direc (str): directory containing files to be segmented
+        - sample_direc (str): The directory containing files to be segmented.
+        - avoid_names (List[str], optional): A list of file names to be avoided.Don't include any file extensions. Default is [].
 
         Returns:
-            list: files to be segmented
+        - list: A list of files to be segmented.
         """
-        # Read in the image filenames as either .npz,.jpg, or .png
-        sample_filenames = sorted(glob(sample_direc + os.sep + "*.*"))
+        file_extensions = [".npz", ".jpg", ".png"]
+        sample_filenames = []
+
+        npz_filenames = sorted(
+            tf.io.gfile.glob(sample_direc + os.sep + "*" + file_extensions[0])
+        )
+        # if no npz files were get image filename
+        if len(npz_filenames) == 0:
+            for ext in file_extensions[0:]:
+                filenames = sorted(tf.io.gfile.glob(sample_direc + os.sep + "*" + ext))
+                sample_filenames.extend(filenames)
+                if sample_filenames:
+                    break
+        sample_filenames = [
+            filename
+            for filename in sample_filenames
+            if os.path.splitext(os.path.basename(filename))[0] not in avoid_names
+        ]
         logger.info(f"files to seg: {sample_filenames}")
-        if sample_filenames[0].split(".")[-1] == "npz":
-            sample_filenames = sorted(tf.io.gfile.glob(sample_direc + os.sep + "*.npz"))
-        else:
-            sample_filenames = sorted(tf.io.gfile.glob(sample_direc + os.sep + "*.jpg"))
-            if len(sample_filenames) == 0:
-                sample_filenames = sorted(glob(sample_direc + os.sep + "*.png"))
         return sample_filenames
+
+    def create_model_data(self, directories: List[str], avoid_names: List["str"] = []):
+        translateoptions = "-of JPEG -co COMPRESS=JPEG -co TFW=YES -co QUALITY=100"
+        for dir in directories:
+            files = glob(os.path.join(dir, ".tif"))
+            files = [file for file in files if file not in avoid_names]
+            logger.info(f"Translating tifs to jpgs {files}")
+            common.gdal_translate_jpeg(files, translateoptions)
+
+    def create_jpgs_for_tifs(
+        self, directories: List[str], avoid_names: List["str"] = []
+    ):
+        """
+        Creates JPEG files for TIF files in specified directories.
+
+        Args:
+            directories (List[str]): List of directory paths where TIF files are located.
+            avoid_names (List[str], optional): List of file names to exclude. Defaults to [].
+
+        Returns:
+            None
+        """
+
+        translateoptions = "-of JPEG -co COMPRESS=JPEG -co TFW=YES -co QUALITY=100"
+        for directory in tqdm.auto.tqdm(
+            directories, desc="Convert .tif to .jpg", leave=False, unit_scale=True
+        ):
+            tif_files = self.get_tifs_missing_jpgs(directory, avoid_names)
+            if len(tif_files) == 0:
+                logger.info(
+                    f"All tifs in directory '{directory}' have corresponding jpgs."
+                )
+                print(f"No tif files were missing jpgs in {directory}")
+                continue
+            print(f"Converting tif files to jpgs in {directory}")
+            logger.info(f"Translating tifs to jpgs {tif_files}")
+            common.gdal_translate_jpeg(tif_files, translateoptions)
+
+    def get_tifs_missing_jpgs(
+        self, full_path: str, avoid_names: List[str] = []
+    ) -> List[str]:
+        """
+        Returns a list of TIF files in `full_path` that are missing corresponding JPG files.
+
+        Args:
+            full_path (str): The path to the directory containing the TIF files.
+            avoid_names (List[str]): A list of TIF file names to ignore.
+
+        Returns:
+            List[str]: A list of TIF file names that are missing corresponding JPG files.
+        """
+        logger.info(f"full_path: {full_path}")
+        tif_files = glob(os.path.join(full_path, "*.tif"))
+        logger.info(f"tif_files {tif_files}")
+        tif_files = [file for file in tif_files if file not in avoid_names]
+        missing_jpgs = [
+            file
+            for file in tif_files
+            if not os.path.exists(file.replace(".tif", ".jpg"))
+        ]
+        logger.info(f"Tiffs missing_jpgs {missing_jpgs}")
+        return missing_jpgs
+
+    # def check_jpg_per_tif(self,directories:List[str]):
+    #     for dir in directories:
+    #         files = glob.glob(os.path.join(dir,"*.tif"))
+    #         tif_only = [name for name in files if not os.path.exists(name.replace(".tif",".jpg"))]
+    #         if len(tif_only) > 0:
+    #             return tif_only
+    #         return []
 
     def run_model(
         self,
         model_implementation: str,
-        session: str,
-        directory: str,
+        session_name: str,
+        src_directory: str,
         model_name: str,
         use_GPU: str,
         use_otsu: bool,
         use_tta: bool,
     ):
-        logger.info(f"ROI directory: {directory}")
-        logger.info(f"session name: {session}")
+        logger.info(f"ROI directory: {src_directory}")
+        logger.info(f"session name: {session_name}")
         logger.info(f"model_name: {model_name}")
         logger.info(f"model_implementation: {model_implementation}")
+        logger.info(f"use_GPU: {use_GPU}")
+        logger.info(f"use_otsu: {use_otsu}")
+        logger.info(f"use_tta: {use_tta}")
 
         self.download_model(model_implementation, model_name)
+        print("")
         weights_list = self.get_weights_list(model_implementation)
 
         # Load the model from the config files
         model, model_list, config_files, model_types = self.get_model(weights_list)
         metadatadict = self.get_metadatadict(weights_list, config_files, model_types)
-
-        # For each year
-        # make a model_settings{year}.json
-        # Apply model on dir which calls compute_segmentation
-        # move files
-        # delete old out directory
-        # create orthomoasic
-
-        # this function expects a multiband directory be sure to test with ROI directory
-        seg_files_per_year = common.get_seg_files_by_year(directory)
-        for year in seg_files_per_year.keys():
-            sample_direc = seg_files_per_year[year]["filepath"]
-            logger.info(f"Model outputs will be saved to { sample_direc}")
-            # need to make the list of jpgs compataible with get_files_for_seg
-            # run_model_on_dir
-            # pass out as the output directory name
-            # source filepath,'out'
-            # dst = create sub dir of year in session directory
-            # move_segmentations(src,dst)
-
         model_dict = {
             "sample_direc": None,
             "use_GPU": use_GPU,
@@ -408,14 +524,55 @@ class Zoo_Model:
             "tta": False,
         }
 
-        # # Compute the segmentation
-        self.compute_segmentation(
-            model_dict["sample_direc"],
-            model_list,
-            metadatadict,
-            use_tta,
-            use_otsu,
-        )
+        session_path = common.create_directory(os.getcwd(), "sessions")
+        session_dir = common.create_directory(session_path, session_name)
+        year_dirs = common.get_matching_dirs(src_directory, pattern=r"^\d{4}$")
+
+        # create jpgs for all tifs that don't have one
+        self.create_jpgs_for_tifs(year_dirs, avoid_names="merged_multispectral")
+        # @todo get jpgs in each directory and add to a total to use for the progress bar
+
+        logger.info(f"session directory: {session_dir}")
+
+        output_paths = []
+        for year_dir in tqdm.auto.tqdm(
+            year_dirs, desc="Running models on each year", leave=False, unit_scale=True
+        ):
+            # make a model_settings{year}.json
+            model_year_dict = model_dict.copy()
+            model_year_dict["sample_direc"] = year_dir
+            logger.info(f"model_year_dict: {model_year_dict}")
+            year_name = os.path.basename(year_dir)
+            logger.info(f"year_name: {year_name}")
+            session_year_path = common.create_directory(session_dir, year_name)
+            logger.info(f"session_year_path: {session_year_path}")
+
+            model_settings_path = os.path.join(session_year_path, "model_settings.json")
+            common.write_to_json(model_settings_path, model_year_dict)
+            # # Compute the segmentation
+            self.compute_segmentation(
+                model_year_dict["sample_direc"],
+                model_list,
+                metadatadict,
+                use_tta,
+                use_otsu,
+            )
+
+        for year_dir in tqdm.auto.tqdm(
+            year_dirs, desc="Running models on each year", leave=False, unit_scale=True
+        ):
+            # move files from out dir to session directory under folder with year name
+            year_name = os.path.basename(year_dir)
+            outputs_path = os.path.join(src_directory, year_name, "out")
+            logger.info(f"outputs_path: {outputs_path}")
+            print(f"Moving files to {session_year_path}")
+            if not os.path.exists(outputs_path):
+                logger.info(f"No model outputs were generated for year {year_name}")
+                print(f"No model outputs were generated for year {year_name}")
+                continue
+            common.move_files(outputs_path, session_year_path, delete_src=True)
+            print("Done moving files!")
+            # @todo create orthomoasic Coming soon....
 
     def compute_segmentation(
         self,
@@ -428,7 +585,9 @@ class Zoo_Model:
         logger.info(f"Test Time Augmentation: {use_tta}")
         logger.info(f"Otsu Threshold: {use_otsu}")
         # Read in the image filenames as either .npz,.jpg, or .png
-        files_to_segment = self.get_files_for_seg(sample_direc)
+        files_to_segment = self.get_files_for_seg(
+            sample_direc, avoid_names=["merged_multispectral"]
+        )
         logger.info(f"files_to_segment: {files_to_segment}")
         # Compute the segmentation for each of the files
         for file_to_seg in tqdm.auto.tqdm(files_to_segment):
@@ -443,8 +602,10 @@ class Zoo_Model:
                 TESTTIMEAUG=use_tta,
                 WRITE_MODELMETADATA=False,
                 OTSU_THRESHOLD=use_otsu,
+                out_dir_name="out",
             )
 
+    @time_func
     def get_model(self, weights_list: list):
         model_list = []
         config_files = []
@@ -583,6 +744,7 @@ class Zoo_Model:
 
         return model, model_list, config_files, model_types
 
+    @time_func
     def get_metadatadict(
         self, weights_list: list, config_files: list, model_types: list
     ):
@@ -592,6 +754,7 @@ class Zoo_Model:
         metadatadict["model_types"] = model_types
         return metadatadict
 
+    @time_func
     def get_weights_list(self, model_choice: str = "ENSEMBLE"):
         """Returns of the weights files(.h5) within weights_direc"""
         if model_choice == "ENSEMBLE":

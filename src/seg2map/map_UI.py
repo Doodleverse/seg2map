@@ -69,17 +69,14 @@ class UI:
         # save an instance of Seg2Map
         self.seg2map = seg2map
         # button styles
-        self.remove_style = dict(button_color="red")
-        self.load_style = dict(button_color="#69add1")
-        self.action_style = dict(button_color="#ae3cf0")
-        self.save_style = dict(button_color="#50bf8f")
-        self.clear_stlye = dict(button_color="#a3adac")
+        self.get_button_styles()
 
         # buttons to load configuration files
         self.load_configs_button = Button(
             description="Load Config", style=self.load_style
         )
         self.load_configs_button.on_click(self.on_load_configs_clicked)
+
         self.save_config_button = Button(
             description="Save Config", style=self.save_style
         )
@@ -104,6 +101,13 @@ class UI:
 
         # create the HTML widgets containing the instructions
         self._create_HTML_widgets()
+
+    def get_button_styles(self):
+        self.remove_style = dict(button_color="red")
+        self.load_style = dict(button_color="#69add1")
+        self.action_style = dict(button_color="#ae3cf0")
+        self.save_style = dict(button_color="#50bf8f")
+        self.clear_stlye = dict(button_color="#a3adac")
 
     def get_view_settings(self) -> VBox:
         # update settings button
