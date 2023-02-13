@@ -23,7 +23,7 @@ class ROI:
     A Bounding Box drawn by user.
     """
 
-    MAX_AREA = 3000000000  # UNITS = Sq. Meters
+    MAX_AREA = 100000000  # UNITS = Sq. Meters
     MIN_AREA = 10  # UNITS = Sq. Meters
     LAYER_NAME = "ROI"
 
