@@ -35,6 +35,32 @@ from ipywidgets import HTML
 logger = logging.getLogger(__name__)
 
 
+def gdal_translate_png_to_tiff(
+    files: List[str],
+    translateoptions: str = "-of JPEG -co COMPRESS=JPEG -co TFW=YES -co QUALITY=100",
+):
+    """Convert TIFF files to JPEG files using GDAL.
+
+    Args:
+        files (List[str]): List of file paths to TIFF files to be converted.
+        translateoptions (str, optional): GDAL options for converting TIFF files to JPEG files. Defaults to "-of JPEG -co COMPRESS=JPEG -co TFW=YES -co QUALITY=100".
+
+    Returns:
+        List[str]: List of file paths to the newly created JPEG files.
+    """
+    new_files = []
+    for file in files:
+        new_file = file.replace(".png", ".tif")
+        if os.path.exists(new_file):
+            logger.info(f"File: {new_file} already exists")
+            print(f"File: {new_file} already exists")
+        else:
+            dst = gdal.Translate(new_file, file, options=translateoptions)
+            new_files.append(new_file)
+            dst = None  # close and save ds
+    return new_files
+
+
 def gdal_translate_jpeg(
     files: List[str],
     translateoptions: str = "-of JPEG -co COMPRESS=JPEG -co TFW=YES -co QUALITY=100",
@@ -58,6 +84,51 @@ def gdal_translate_jpeg(
             new_files.append(f.replace(".tif", ".jpg"))
             dst = None  # close and save ds
     return new_files
+
+
+def rename_files(directory: str, pattern: str, new_name: str, replace_name: str):
+    """Rename all files in a directory that match a glob pattern
+
+    Args:
+        directory (str): the path to the directory containing the files to be renamed
+        pattern (str): the glob pattern to match the files to be renamed
+        new_name (str): the new prefix for the renamed files
+    """
+    # Get a list of files that match the pattern
+    files = glob.glob(os.path.join(directory, pattern))
+    logger.info(f"Files to rename: {files}")
+
+    for file in files:
+        # Get the base name of the file
+        base_name = os.path.basename(file)
+
+        # Construct the new file name
+        new_file_name = base_name.replace(replace_name, new_name)
+        new_file_path = os.path.join(directory, new_file_name)
+
+        # Rename the file
+        os.rename(file, new_file_path)
+
+
+def copy_files(src_files: List[str], dst_dir: str, avoid_names: List[str] = []) -> None:
+    """Copy files from a list of source files to a destination directory, while avoiding files with specific names.
+
+    Args:
+    src_files (List[str]): A list of file paths to be copied.
+    dst_dir (str): The path to the destination directory.
+    avoid_names (List[str], optional): A list of substrings to avoid in filenames. Defaults to [].
+
+    Returns:
+    None
+    """
+    logger.info(f"Copying files to {dst_dir}. Files: {src_files}")
+    os.makedirs(dst_dir, exist_ok=True)
+    for src_file in src_files:
+        filename = os.path.basename(src_file)
+        if any(name in filename for name in avoid_names):
+            continue
+        dst_file = os.path.join(dst_dir, filename)
+        shutil.copy(src_file, dst_file)
 
 
 def move_files(src_dir: str, dst_dir: str, delete_src: bool = False) -> None:

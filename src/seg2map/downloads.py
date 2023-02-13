@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 # Initialize a semaphore object with a limit of 10
 # GEE allows for 10 concurrent requests at once
-limit = asyncio.Semaphore(11)
+limit = asyncio.Semaphore(15)
 
 
 def get_num_splitters(gdf: gpd.GeoDataFrame) -> int:
@@ -220,7 +220,8 @@ async def async_download_tile(
                 await asyncio.sleep(1)
 
             # zip directory images will be downloaded to
-            async with session.get(url, timeout=300, raise_for_status=True) as r:
+            async with session.get(url, timeout=600, raise_for_status=True) as r:
+                logger.info(f"Response: {r}")
                 if r.status != 200:
                     print("An error occurred while downloading.{r}")
                     logger.error("An error occurred while downloading.{r}")
@@ -408,7 +409,9 @@ async def async_download_tiles(tiles_info: List[dict], download_bands: str) -> N
         download_bands (str): type of imagery to download
             must be one of the following strings "multiband","singleband", or "both
     """
-    async with aiohttp.ClientSession() as session:
+    # trigger a timeout after 600 seconds(10 minutes)
+    timeout = aiohttp.ClientTimeout(total=600)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
         # creates task for each tile to be downloaded and waits for tasks to complete
         tasks = []
         for counter, tile_dict in enumerate(tiles_info):
@@ -422,8 +425,13 @@ async def async_download_tiles(tiles_info: List[dict], download_bands: str) -> N
                 "singleband": os.path.basename(filepath),
             }
             for tile_id in tile_dict["ids"]:
+                logger.info(f"tile_id: {tile_id}")
                 file_id = tile_id.replace("/", "_")
+                # handles edge case where tile has 2 years in the tile ID by extracting the ealier year
                 year_str = file_id.split("_")[-1][:4]
+                if len(file_id.split("_")[-2]) == 8:
+                    year_str = file_id.split("_")[-2][:4]
+
                 # full path to year directory within multiband dir eg. ./multiband/2012
                 year_filepath = os.path.join(multiband_filepath, year_str)
                 logger.info(f"year_filepath: {year_filepath}")
@@ -490,6 +498,8 @@ def get_tiles_info(
                 polygon geometry, the IDs of the images within the tile, and the file path to the directory where the
                 images will be saved.
     """
+    logger.info(f"dates: {dates}")
+    logger.info(f"roi_path: {roi_path}")
     sum_imgs = 0
     image_ids = []
     image_dicts = []

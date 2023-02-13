@@ -451,7 +451,6 @@ class Zoo_Model:
                 logger.info(
                     f"All tifs in directory '{directory}' have corresponding jpgs."
                 )
-                print(f"No tif files were missing jpgs in {directory}")
                 continue
             print(f"Converting tif files to jpgs in {directory}")
             logger.info(f"Translating tifs to jpgs {tif_files}")
@@ -549,7 +548,7 @@ class Zoo_Model:
 
             model_settings_path = os.path.join(session_year_path, "model_settings.json")
             common.write_to_json(model_settings_path, model_year_dict)
-            # # Compute the segmentation
+            # Compute the segmentation
             self.compute_segmentation(
                 model_year_dict["sample_direc"],
                 model_list,
@@ -564,14 +563,32 @@ class Zoo_Model:
             # move files from out dir to session directory under folder with year name
             year_name = os.path.basename(year_dir)
             outputs_path = os.path.join(src_directory, year_name, "out")
-            logger.info(f"outputs_path: {outputs_path}")
-            print(f"Moving files to {session_year_path}")
+            session_year_path = common.create_directory(session_dir, year_name)
+            logger.info(f"Moving from {outputs_path} files to {session_year_path}")
             if not os.path.exists(outputs_path):
                 logger.info(f"No model outputs were generated for year {year_name}")
                 print(f"No model outputs were generated for year {year_name}")
                 continue
+
             common.move_files(outputs_path, session_year_path, delete_src=True)
-            print("Done moving files!")
+            common.rename_files(
+                session_year_path, "*.png", new_name="", replace_name="_predseg"
+            )
+            # copy the xml files associated with each model output
+            xml_files = glob(os.path.join(year_dir, "*aux.xml"))
+            common.copy_files(xml_files, session_year_path, avoid_names="merged")
+            # rename all the xml files
+            common.rename_files(
+                session_year_path, "*aux.xml", new_name=".png", replace_name=".jpg"
+            )
+            png_files = glob(os.path.join(session_year_path, "*png"))
+            png_files = [
+                filename
+                for filename in png_files
+                if "overlay" not in os.path.basename(filename)
+            ]
+            common.gdal_translate_png_to_tiff(png_files, translateoptions="-of GTiff")
+            logger.info(f"Done moving files for year : {session_year_path}")
             # @todo create orthomoasic Coming soon....
 
     def compute_segmentation(
