@@ -27,9 +27,9 @@ from osgeo import gdal
 
 logger = logging.getLogger(__name__)
 
-# Initialize a semaphore object with a limit of 10
-# GEE allows for 10 concurrent requests at once
-limit = asyncio.Semaphore(15)
+
+# GEE allows for 20 concurrent requests at once
+limit = asyncio.Semaphore(22)
 
 
 def get_num_splitters(gdf: gpd.GeoDataFrame) -> int:
@@ -149,12 +149,6 @@ def get_subdirs(parent_dir: str):
     return subdirectories
 
 
-def unzip_data(parent_dir: str):
-    subdirs = get_subdirs(parent_dir)
-    unzip_files(subdirs)
-    remove_zip_files(subdirs)
-
-
 def create_dir(dir_path: str, raise_error=True) -> str:
     dir_path = os.path.abspath(dir_path)
     if os.path.exists(dir_path):
@@ -212,15 +206,8 @@ async def async_download_tile(
             chunk_size: int = 2048
             # create download url using id
             url = ee.data.makeDownloadUrl(download_id)
-
-            # When workers hit the limit, they'll wait for a second
-            # before making more requests.
-            if limit.locked():
-                logger.info("Concurrency limit reached, waiting ...")
-                await asyncio.sleep(1)
-
             # zip directory images will be downloaded to
-            async with session.get(url, timeout=600, raise_for_status=True) as r:
+            async with session.get(url, raise_for_status=True) as r:
                 logger.info(f"Response: {r}")
                 if r.status != 200:
                     print("An error occurred while downloading.{r}")
@@ -245,58 +232,6 @@ def copy_multiband_tifs(roi_path: str, multiband_path: str):
             shutil.copyfile(file, multiband_path + os.sep + file.split(os.sep)[-1])
             for file in files
         ]
-
-
-def merge_tifs(multiband_path: str, roi_path: str) -> str:
-    # Check if path to ROI directory exists
-    if not os.path.exists(roi_path):
-        raise FileNotFoundError(f"{roi_path} not found.")
-    # Check if path to multiband exists
-    if not os.path.exists(multiband_path):
-        raise FileNotFoundError(f"{multiband_path} not found.")
-    try:
-
-        # Create a list of tif files in multiband_path
-        tif_files = glob(os.path.join(multiband_path, "*.tif"))
-        if not tif_files:
-            raise FileNotFoundError(f"No tif files found in {multiband_path}.")
-
-        vrt_path = os.path.join(roi_path, "merged_multispectral.vrt")
-        logger.info(f"vrt_path: {vrt_path}")
-
-        ## create vrt(virtual world format) file
-        vrtoptions = gdal.BuildVRTOptions(
-            resampleAlg="average", srcNodata=0, VRTNodata=0
-        )
-        # creates a virtual world file using all the tifs and overwrites any pre-existing .vrt
-        virtual_dataset = gdal.BuildVRT(vrt_path, tif_files, options=vrtoptions)
-        # flushing the cache causes the vrt file to be created
-        virtual_dataset.FlushCache()
-        # reset the dataset object
-        virtual_dataset = None
-
-        # create geotiff (.tiff) from merged vrt file
-        virtual_dataset = gdal.Translate(
-            vrt_path.replace(".vrt", ".tif"),
-            creationOptions=["COMPRESS=LZW", "TILED=YES"],
-            srcDS=vrt_path,
-        )
-        virtual_dataset.FlushCache()
-        virtual_dataset = None
-
-        # convert .vrt to .jpg file
-        virtual_dataset = gdal.Translate(
-            vrt_path.replace(".vrt", ".jpg"),
-            creationOptions=["WORLDFILE=YES", "QUALITY=100"],
-            srcDS=vrt_path.replace(".vrt", ".tif"),
-        )
-        virtual_dataset.FlushCache()
-        virtual_dataset = None
-        return vrt_path
-    except Exception as e:
-        print(e)
-        logger.error(e)
-        raise e
 
 
 def mk_filepaths(tiles_info: List[dict]):
@@ -389,6 +324,47 @@ def create_tasks(
     return tasks
 
 
+async def async_download_all_tiles(tiles_info: List[dict], download_bands: str) -> None:
+    # creates task for each tile to be downloaded and waits for tasks to complete
+    tasks = []
+    for counter, tile_dict in enumerate(tiles_info):
+        polygon = tile_dict["polygon"]
+        filepath = os.path.abspath(tile_dict["filepath"])
+        parent_dir = os.path.dirname(filepath)
+        multiband_filepath = os.path.join(parent_dir, "multiband")
+        filenames = {
+            "multiband": "multiband" + str(counter),
+            "singleband": os.path.basename(filepath),
+        }
+
+        timeout = aiohttp.ClientTimeout(total=3000)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            for tile_id in tile_dict["ids"]:
+                logger.info(f"tile_id: {tile_id}")
+                file_id = tile_id.replace("/", "_")
+                # handles edge case where tile has 2 years in the tile ID by extracting the ealier year
+                year_str = file_id.split("_")[-1][:4]
+                if len(file_id.split("_")[-2]) == 8:
+                    year_str = file_id.split("_")[-2][:4]
+                # full path to year directory within multiband dir eg. ./multiband/2012
+                year_filepath = os.path.join(multiband_filepath, year_str)
+                logger.info(f"year_filepath: {year_filepath}")
+                tasks.extend(
+                    create_tasks(
+                        session,
+                        polygon,
+                        tile_id,
+                        filepath,
+                        year_filepath,
+                        filenames,
+                        file_id,
+                        download_bands,
+                    )
+                )
+    # show a progress bar of all the requests in progress
+    await tqdm.asyncio.tqdm.gather(*tasks, position=0, desc=f"All Downloads")
+
+
 async def async_download_tiles(tiles_info: List[dict], download_bands: str) -> None:
     """
         Downloads all tiles asynchronously and displays a tqdm for the download progress.
@@ -409,8 +385,8 @@ async def async_download_tiles(tiles_info: List[dict], download_bands: str) -> N
         download_bands (str): type of imagery to download
             must be one of the following strings "multiband","singleband", or "both
     """
-    # trigger a timeout after 600 seconds(10 minutes)
-    timeout = aiohttp.ClientTimeout(total=600)
+    # trigger a timeout after 3000 seconds(1 hour)
+    timeout = aiohttp.ClientTimeout(total=3000)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         # creates task for each tile to be downloaded and waits for tasks to complete
         tasks = []
@@ -612,14 +588,6 @@ async def download_ROI(
     mk_filepaths(tiles_info)
     # download ROI tiles concurrently
     await async_download_tiles(tiles_info, download_bands)
-    # Download tiles and unzip data
-    unzip_data(roi_path)
-    # delete any directories that were empty
-    common.delete_empty_dirs(multiband_path)
-    # create multispectral tif for each year only if multiband imagery was downloaded
-    if download_bands != "singleband":
-        for subdir in os.scandir(multiband_path):
-            merge_tifs(multiband_path=subdir.path, roi_path=subdir.path)
 
 
 async def download_rois(

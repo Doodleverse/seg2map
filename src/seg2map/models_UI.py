@@ -173,7 +173,6 @@ class UI_Models:
         )
         self.file_row = HBox([])
         self.warning_row = HBox([])
-        run_model_box = HBox([self.run_model_button, self.open_results_button])
         display(
             checkboxes,
             model_choices_box,
@@ -183,7 +182,7 @@ class UI_Models:
             self.warning_row,
             self.file_row,
             UI_Models.model_view,
-            run_model_box,
+            self.run_model_button,
             UI_Models.run_model_view,
         )
 
@@ -274,7 +273,7 @@ class UI_Models:
 
         self.instr_select_images = HTML(
             value="<b>1. Select Images</b> \
-                <br> - Select an ROI directory",
+                <br> - Select multiband directory within an ROI directory",
             layout=Layout(margin="0px 0px 0px 20px"),
         )
 

@@ -32,6 +32,39 @@ logger = logging.getLogger(__name__)
 from time import perf_counter
 
 
+def get_merged_multispectural(src_path: str) -> str:
+    """
+    Merges multiple GeoTIFF files into a single VRT file and returns the path of the merged file.
+
+    This function looks for all GeoTIFF files in the specified directory, except for any files that contain the string "merged_multispectral" in their name. It groups the remaining files into batches of 4, and merges each batch into a separate VRT file. Finally, it merges all the VRT files into a single VRT file and returns the path of the merged file.
+
+    Parameters:
+    - src_path (str): The path of the directory containing the GeoTIFF files.
+
+    Returns:
+    - The path of the merged VRT file.
+    """
+    tif_files = glob(os.path.join(src_path, "*.tif"))
+    tif_files = [file for file in tif_files if "merged_multispectral" not in file]
+    logger.info(f"Found {len(tif_files)} GeoTIFF files in {src_path}")
+    logger.info(f"tif_files: {tif_files}")
+    merged_files = []
+    for idx, files in enumerate(common.group_files(tif_files, 4)):
+        filename = f"merged_multispectral_{idx}.vrt"
+        dst_path = os.path.join(src_path, filename)
+        merged_tif = common.merge_files(files, dst_path, create_jpg=False)
+        merged_files.append(merged_tif)
+
+    logger.info(f"merged_files {merged_files}")
+    dst_path = os.path.join(src_path, " merged_multispectral.vrt")
+    merged_file = common.merge_files(merged_files, dst_path)
+    # delete intermediate merged tifs and vrts
+    pattern = ".*merged_multispectral_\d+.*"
+    deleted_files = common.delete_files(pattern, src_path)
+    logger.info(f"deleted_files {deleted_files}")
+    return merged_file
+
+
 def time_func(func):
     def wrapper(*args, **kwargs):
         start = perf_counter()
@@ -528,7 +561,7 @@ class Zoo_Model:
         year_dirs = common.get_matching_dirs(src_directory, pattern=r"^\d{4}$")
 
         # create jpgs for all tifs that don't have one
-        self.create_jpgs_for_tifs(year_dirs, avoid_names="merged_multispectral")
+        self.create_jpgs_for_tifs(year_dirs, avoid_names=["merged_multispectral"])
         # @todo get jpgs in each directory and add to a total to use for the progress bar
 
         logger.info(f"session directory: {session_dir}")
@@ -558,7 +591,7 @@ class Zoo_Model:
             )
 
         for year_dir in tqdm.auto.tqdm(
-            year_dirs, desc="Running models on each year", leave=False, unit_scale=True
+            year_dirs, desc="Creating tifs", leave=False, unit_scale=True
         ):
             # move files from out dir to session directory under folder with year name
             year_name = os.path.basename(year_dir)
@@ -576,7 +609,7 @@ class Zoo_Model:
             )
             # copy the xml files associated with each model output
             xml_files = glob(os.path.join(year_dir, "*aux.xml"))
-            common.copy_files(xml_files, session_year_path, avoid_names="merged")
+            common.copy_files(xml_files, session_year_path, avoid_names=["merged"])
             # rename all the xml files
             common.rename_files(
                 session_year_path, "*aux.xml", new_name=".png", replace_name=".jpg"
@@ -589,7 +622,9 @@ class Zoo_Model:
             ]
             common.gdal_translate_png_to_tiff(png_files, translateoptions="-of GTiff")
             logger.info(f"Done moving files for year : {session_year_path}")
-            # @todo create orthomoasic Coming soon....
+            # create orthomoasic
+            merged_multispectural = get_merged_multispectural(session_year_path)
+            logger.info(f"merged_multispectural: {merged_multispectural}")
 
     def compute_segmentation(
         self,

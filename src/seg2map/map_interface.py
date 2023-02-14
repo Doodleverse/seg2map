@@ -13,6 +13,8 @@ from src.seg2map import exception_handler
 from src.seg2map import downloads
 
 import geopandas as gpd
+import tqdm
+import tqdm.auto
 from ipyleaflet import DrawControl, LayersControl, WidgetControl, GeoJSON
 from leafmap import Map
 from ipywidgets import Layout, HTML, Accordion
@@ -114,6 +116,36 @@ class Seg2Map:
         downloads.run_async_download(
             site_path, self.rois.gdf, selected_ids, settings["dates"], download_bands
         )
+
+        # unzip and delete any empty directories
+        for dir_name in os.listdir(site_path):
+            roi_path = os.path.join(site_path, dir_name)
+            multiband_path = os.path.join(roi_path, "multiband")
+            # Download tiles and unzip data
+            common.unzip_data(roi_path)
+            # delete any directories that were empty
+            common.delete_empty_dirs(multiband_path)
+
+        # create multispectral tif for each year only if multiband imagery was downloaded
+
+        if download_bands != "singleband":
+            for dir_name in tqdm.auto.tqdm(
+                os.listdir(site_path),
+                desc="Merging tifs for all ROI",
+                leave=False,
+                unit_scale=True,
+            ):
+                roi_path = os.path.join(site_path, dir_name)
+                multiband_path = os.path.join(roi_path, "multiband")
+                for dir_name in tqdm.auto.tqdm(
+                    os.listdir(multiband_path),
+                    desc="Merging tifs per year",
+                    leave=False,
+                    unit_scale=True,
+                ):
+                    dir_path = os.path.join(multiband_path, dir_name)
+                    common.merge_tifs(multiband_path=dir_path, roi_path=dir_path)
+
         # delete empty directories
         common.delete_empty_dirs(site_path)
         self.save_config()
