@@ -94,13 +94,13 @@ We welcome collaboration! Please use our [Discussions](https://github.com/Doodle
     - [X] 2 class dataset (other, flooded building)
     - [X] set of flooded building/other models for 1024x1024 imagery
     - [X] zenodo release for 1024x1024 imagery [zenodo page](https://doi.org/10.5281/zenodo.7613106)
-  - [ ] xBD-hurricanes / aerial / high-res. sat, a subset of the [XView2](https://xview2.org/) dataset
+  - [X] xBD-hurricanes / aerial / high-res. sat, a subset of the [XView2](https://xview2.org/) dataset
     - [X] 4 class building dataset (other, no damage, minor damage, major damage)
-    - [ ] set of building/other models for 768x768 imagery
-    - [ ] zenodo release for 768x768 imagery [zenodo page](https://doi.org/10.5281/zenodo.7613175)
-    - [ ] 2 class building dataset (other, building)
-    - [ ] set of building/other models for 768x768 imagery
-    - [ ] zenodo release for 768x768 imagery [zenodo page](https://doi.org/10.5281/zenodo.7613212)
+    - [X] set of building/other models for 768x768 imagery
+    - [X] zenodo release for 768x768 imagery [zenodo page](https://doi.org/10.5281/zenodo.7613175)
+    - [X] 2 class building dataset (other, building)
+    - [X] set of building/other models for 768x768 imagery
+    - [X] zenodo release for 768x768 imagery [zenodo page](https://doi.org/10.5281/zenodo.7613212)
   - [ ] [NOAA](https://doi.org/10.5281/zenodo.7268083) / aerial / coastlines
     - [X] 4 class dataset (water, bare sand, vegetation, development)
     - [X] set of models for 768x512 imagery
@@ -155,7 +155,8 @@ We welcome collaboration! Please use our [Discussions](https://github.com/Doodle
 #### XBD-hurricanes
 * [Xview2 challenge](https://xview2.org/)
 * [XBD-hurricanes code](https://github.com/MARDAScience/XBD-hurricanes)
-
+* Zenodo model release (768x768) building damage: Buscombe, Daniel. (2023). Doodleverse/Segmentation Zoo/Seg2Map SegFormer models for segmentation of xBD/damaged buildings in RGB 768x768 high-res. images (v1.0) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.7613175
+* Zenodo model release (768x768) building presence/absence: Buscombe, Daniel. (2023). Doodleverse/Segmentation Zoo/Seg2Map SegFormer models for segmentation of xBD/buildings in RGB 768x768 high-res. images (v1.0) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.7613212
 
 ### General Landcover
 
