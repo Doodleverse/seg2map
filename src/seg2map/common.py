@@ -15,6 +15,7 @@ import logging
 import os, json, shutil
 from glob import glob
 import concurrent.futures
+from datetime import datetime
 
 # Internal dependencies imports
 from src.seg2map import exception_handler
@@ -402,6 +403,31 @@ def unzip_files(paths):
         concurrent.futures.wait(futures)
 
 
+
+
+def get_yearly_ranges(date_range):
+    """
+    Returns a list of start and end dates for each year in the specified date range.
+
+    Parameters:
+    - date_range (list): A list of two dates in the format ['YYYY-MM-DD', 'YYYY-MM-DD'].
+
+    Returns:
+    - A list of tuples, where each tuple contains the start and end date for a single year in the range.
+    """
+    start_date = datetime.strptime(date_range[0], '%Y-%m-%d')
+    end_date = datetime.strptime(date_range[1], '%Y-%m-%d')
+    year_ranges = []
+    for year in range(start_date.year, end_date.year + 1):
+        year_start = datetime(year, 1, 1)
+        year_end = datetime(year, 12, 31)
+        if year == start_date.year:
+            year_start = start_date
+        if year == end_date.year:
+            year_end = end_date
+        year_ranges.append((year_start, year_end))
+    return year_ranges
+
 def unzip_data(parent_dir: str):
     logger.info(f"Parent directory to find zip files: {parent_dir}")
     subdirs = get_subdirs(parent_dir)
@@ -422,9 +448,8 @@ def create_dir(dir_path: str, raise_error=True) -> str:
 
 def create_directory(file_path: str, name: str) -> str:
     new_directory = os.path.join(file_path, name)
-    # Check if the "sessions" directory exists
+    # If the directory named 'name' does not exist, create it
     if not os.path.exists(new_directory):
-        # If the "sessions" directory does not exist, create it
         os.makedirs(new_directory)
     return new_directory
 

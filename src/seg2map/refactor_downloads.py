@@ -615,3 +615,62 @@ async def download_rois(
         raise exceptions.No_Images_Available(
             f"No images found within these dates : {dates}"
         )
+
+def create_ROI_directories(download_path: str,roi_id:str,dates):
+    """
+    Creates directories to store downloaded data for a single region of interest (ROI).
+
+    The function creates a main directory for the ROI, a subdirectory for multiband files, and subdirectories for each year in the date range.
+
+    Parameters:
+    - download_path (str): The path to the directory where downloaded data should be stored.
+    - roi_id (str): The ID of the ROI.
+    - dates (List[str]): A list containing the start and end dates of the date range in the format ['YYYY-MM-DD', 'YYYY-MM-DD'].
+
+    Returns:
+    - None
+    """
+    # name of ROI folder to contain all downloaded data
+    roi_name = f"ID_{roi_id}_dates_{dates[0]}_to_{dates[1]}"
+    roi_path = os.path.join(download_path, roi_name)
+    # create directory to hold all multiband files
+    multiband_path = common.create_directory(roi_path, "multiband")
+    # create subdirectories for each year
+    start_date = dates[0].split("-")[0]
+    end_date = dates[1].split("-")[0]
+    logger.info(f"start_date : {start_date } end_date : {end_date }")
+    common.create_year_directories(int(start_date), int(end_date), multiband_path)
+
+
+def prepare_ROI_for_download(
+    download_path: str,
+    roi_gdf: gpd.GeoDataFrame,
+    ids: List[str],
+    dates: Tuple[str],
+) -> None:
+    for roi_id in ids:
+        create_ROI_directories(download_path,roi_id,dates)
+        roi_gdf = roi_gdf.loc[id]
+        # get number of splitters need to split ROI into rectangles of 1km^2 area (or less)
+        num_splitters = get_num_splitters(roi_gdf)
+        logger.info("Splitting ROI into {num_splitters}x{num_splitters} tiles")
+
+        # split ROI into rectangles of 1km^2 area (or less)
+        tile_coords = get_tile_coords(num_splitters, roi_gdf)
+        logger.info(f"tile_coords: {tile_coords}")
+
+def get_tiles_info_per_year(roi_path: str, roi_gdf: gpd.GeoDataFrame,roi_id: str, dates: Tuple[str],):
+        gee_collection = "USDA/NAIP/DOQQ"
+        roi_gdf = roi_gdf.loc[roi_id]
+        # get number of splitters need to split ROI into rectangles of 1km^2 area (or less)
+        num_splitters = get_num_splitters(roi_gdf)
+        logger.info("Splitting ROI into {num_splitters}x{num_splitters} tiles")
+
+        # split ROI into rectangles of 1km^2 area (or less)
+        tile_coords = get_tile_coords(num_splitters, roi_gdf)
+        logger.info(f"tile_coords: {tile_coords}")
+        yearly_ranges = common.get_yearly_ranges(dates)
+        for year_date in yearly_ranges:
+            # Get list of tile info needed for download
+            tiles_info, sum_imgs = get_tiles_info(tile_coords, year_date, roi_path, gee_collection)
+            logger.info(f"Images available for year {year_date} :{len(sum_imgs)} ")
