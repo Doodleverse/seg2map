@@ -86,7 +86,7 @@ class UI_Models:
         self.model_dict = {
             "sample_direc": None,
             "use_GPU": "0",
-            "implementation": "ENSEMBLE",
+            "implementation": "BEST",
             "model_type": "FloodNet_RGB_10class_7566797",
             "otsu": False,
             "tta": False,
@@ -188,8 +188,8 @@ class UI_Models:
 
     def _create_widgets(self):
         self.model_implementation = RadioButtons(
-            options=["ENSEMBLE", "BEST"],
-            value="ENSEMBLE",
+            options=[ "BEST","ENSEMBLE"],
+            value= "BEST",
             description="Select:",
             disabled=False,
         )
