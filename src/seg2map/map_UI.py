@@ -366,7 +366,7 @@ class UI:
         UI.download_view.clear_output()
         UI.debug_view.clear_output()
         self.seg2map.map.default_style = {"cursor": "wait"}
-        UI.debug_view.append_stdout("Scroll down past map to see download progress.")
+        print("Scroll down past map to see download progress.")
         try:
             self.download_button.disabled = True
             try:

@@ -31,6 +31,57 @@ import aiohttp
 logger = logging.getLogger(__name__)
 
 
+import asyncio
+
+class DownloadManager:
+    def __init__(self, session_manager, max_concurrent_downloads=10):
+        self.session_manager = session_manager
+        self.max_concurrent_downloads = max_concurrent_downloads
+        self.semaphore = asyncio.Semaphore(max_concurrent_downloads)
+        self.batches = []
+
+    def add_batch(self, batch):
+        self.batches.append(batch)
+
+    async def start_downloads(self):
+        for batch in self.batches:
+            await self.download_batch(batch)
+
+    async def download_batch(self, batch):
+        tasks = []
+        async with self.semaphore:
+            async with self.session_manager.get_session() as session:
+                for item in batch:
+                    task = asyncio.create_task(self.download_item(session, item))
+                    tasks.append(task)
+                completed, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
+                while len(pending) > 0:
+                    new_tasks = []
+                    async with self.session_manager.get_session() as session:
+                        for task in pending:
+                            if task.cancelled():
+                                continue
+                            try:
+                                await task
+                            except Exception as e:
+                                print(f"Error: {e}")
+                                session.close()
+                                async with self.session_manager.get_session() as session:
+                                    new_task = asyncio.create_task(self.download_item(session, task.item))
+                                    new_tasks.append(new_task)
+                                continue
+                            new_tasks.append(task)
+                        completed, pending = await asyncio.wait(new_tasks, return_when=asyncio.FIRST_EXCEPTION)
+            await self.cleanup(batch, completed)
+
+    async def download_item(self, session, item):
+        # download item using session
+        pass
+
+    async def cleanup(self, batch, completed):
+        # cleanup logic
+        pass
+
 
 
 class DownloadManager:

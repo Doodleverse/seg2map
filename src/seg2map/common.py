@@ -43,6 +43,18 @@ from ipywidgets import HTML
 logger = logging.getLogger(__name__)
 
 
+import time
+
+class Timer:
+    def __enter__(self):
+        self.start = time.perf_counter()
+        return self
+
+    def __exit__(self, *args):
+        self.end = time.perf_counter()
+        self.interval = self.end - self.start
+        print(f"Elapsed time: {self.interval:.6f} seconds")
+
 def group_files(files: List[str], size: int = 2) -> List[List[str]]:
     """
     Groups a list of file paths into sublists of a specified size.

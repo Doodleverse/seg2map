@@ -11,6 +11,7 @@ from src.seg2map.roi import ROI
 from src.seg2map import exceptions
 from src.seg2map import exception_handler
 from src.seg2map import downloads
+from src.seg2map import refactor_downloads
 
 import geopandas as gpd
 import tqdm
@@ -113,43 +114,68 @@ class Seg2Map:
         download_bands = settings["download_bands"]
         # download all selected ROIs on map to sitename directory
         print("Download in process")
-        downloads.run_async_download(
-            site_path, self.rois.gdf, selected_ids, settings["dates"], download_bands
-        )
+
+        # refactor_downloads.prepare_ROI_for_download()
+        roi_paths = []
+        with common.Timer():
+            for roi_id in selected_ids:
+                roi_path = refactor_downloads.create_ROI_directories(site_path,roi_id,settings["dates"])
+                roi_paths.append(roi_path)
+        
+        # with common.Timer():
+        #     for roi_path,roi_id in zip(roi_paths,selected_ids):
+        #         print(f"roi_path: {roi_path}")
+        #         print(f"roi_id: {roi_id}")
+        #         tiles_per_year = refactor_downloads.get_tiles_info_per_year(roi_path,self.rois.gdf,roi_id,settings["dates"])
+        #         logger.info(f"tiles_per_year: {tiles_per_year}")
+
+        with common.Timer():
+            tiles_per_year = refactor_downloads.run_get_tiles_info_per_year(roi_paths,self.rois.gdf,selected_ids,settings["dates"])
+
+        logger.info(f"tiles_per_year: {tiles_per_year}")
+        with common.Timer():
+            refactor_downloads.run_magic_function_to_download(tiles_per_year,download_bands)
+
+        # with common.Timer():
+        #     for year in tiles_per_year.keys():
+        #         refactor_downloads.mk_filepaths(tiles_per_year[year])
+        # downloads.run_async_download(
+        #     site_path, self.rois.gdf, selected_ids, settings["dates"], download_bands
+        # )
 
         # unzip and delete any empty directories
-        for dir_name in os.listdir(site_path):
-            roi_path = os.path.join(site_path, dir_name)
-            multiband_path = os.path.join(roi_path, "multiband")
-            # Download tiles and unzip data
-            common.unzip_data(roi_path)
-            # delete any directories that were empty
-            common.delete_empty_dirs(multiband_path)
+        # for dir_name in os.listdir(site_path):
+        #     roi_path = os.path.join(site_path, dir_name)
+        #     multiband_path = os.path.join(roi_path, "multiband")
+        #     # Download tiles and unzip data
+        #     common.unzip_data(roi_path)
+        #     # delete any directories that were empty
+        #     common.delete_empty_dirs(multiband_path)
 
-        # create multispectral tif for each year only if multiband imagery was downloaded
+        # # create multispectral tif for each year only if multiband imagery was downloaded
 
-        if download_bands != "singleband":
-            for dir_name in tqdm.auto.tqdm(
-                os.listdir(site_path),
-                desc="Merging tifs for all ROI",
-                leave=False,
-                unit_scale=True,
-            ):
-                roi_path = os.path.join(site_path, dir_name)
-                multiband_path = os.path.join(roi_path, "multiband")
-                for dir_name in tqdm.auto.tqdm(
-                    os.listdir(multiband_path),
-                    desc="Merging tifs per year",
-                    leave=False,
-                    unit_scale=True,
-                ):
-                    dir_path = os.path.join(multiband_path, dir_name)
-                    common.merge_tifs(multiband_path=dir_path, roi_path=dir_path)
+        # if download_bands != "singleband":
+        #     for dir_name in tqdm.auto.tqdm(
+        #         os.listdir(site_path),
+        #         desc="Merging tifs for all ROI",
+        #         leave=False,
+        #         unit_scale=True,
+        #     ):
+        #         roi_path = os.path.join(site_path, dir_name)
+        #         multiband_path = os.path.join(roi_path, "multiband")
+        #         for dir_name in tqdm.auto.tqdm(
+        #             os.listdir(multiband_path),
+        #             desc="Merging tifs per year",
+        #             leave=False,
+        #             unit_scale=True,
+        #         ):
+        #             dir_path = os.path.join(multiband_path, dir_name)
+        #             common.merge_tifs(multiband_path=dir_path, roi_path=dir_path)
 
-        # delete empty directories
-        common.delete_empty_dirs(site_path)
-        self.save_config()
-        logger.info("Done downloading")
+        # # delete empty directories
+        # common.delete_empty_dirs(site_path)
+        # self.save_config()
+        # logger.info("Done downloading")
 
     def create_delete_box(self, title: str = None, msg: str = None):
         padding = "0px 0px 0px 5px"  # upper, right, bottom, left

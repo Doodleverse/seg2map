@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 # GEE allows for 20 concurrent requests at once
-limit = asyncio.Semaphore(20)
+limit = asyncio.Semaphore(15)
 
 
 def get_num_splitters(gdf: gpd.GeoDataFrame) -> int:
@@ -329,47 +329,6 @@ def create_tasks(
     return tasks
 
 
-async def async_download_all_tiles(tiles_info: List[dict], download_bands: str) -> None:
-    # creates task for each tile to be downloaded and waits for tasks to complete
-    tasks = []
-    for counter, tile_dict in enumerate(tiles_info):
-        polygon = tile_dict["polygon"]
-        filepath = os.path.abspath(tile_dict["filepath"])
-        parent_dir = os.path.dirname(filepath)
-        multiband_filepath = os.path.join(parent_dir, "multiband")
-        filenames = {
-            "multiband": "multiband" + str(counter),
-            "singleband": os.path.basename(filepath),
-        }
-
-        timeout = aiohttp.ClientTimeout(total=3000)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            for tile_id in tile_dict["ids"]:
-                logger.info(f"tile_id: {tile_id}")
-                file_id = tile_id.replace("/", "_")
-                # handles edge case where tile has 2 years in the tile ID by extracting the ealier year
-                year_str = file_id.split("_")[-1][:4]
-                if len(file_id.split("_")[-2]) == 8:
-                    year_str = file_id.split("_")[-2][:4]
-                # full path to year directory within multiband dir eg. ./multiband/2012
-                year_filepath = os.path.join(multiband_filepath, year_str)
-                logger.info(f"year_filepath: {year_filepath}")
-                tasks.extend(
-                    create_tasks(
-                        session,
-                        polygon,
-                        tile_id,
-                        filepath,
-                        year_filepath,
-                        filenames,
-                        file_id,
-                        download_bands,
-                    )
-                )
-    # show a progress bar of all the requests in progress
-    await tqdm.asyncio.tqdm.gather(*tasks, position=0, desc=f"All Downloads")
-
-
 async def async_download_tiles(tiles_info: List[dict], download_bands: str) -> None:
     """
         Downloads all tiles asynchronously and displays a tqdm for the download progress.
@@ -391,8 +350,9 @@ async def async_download_tiles(tiles_info: List[dict], download_bands: str) -> N
             must be one of the following strings "multiband","singleband", or "both
     """
     # trigger a timeout after 3000 seconds(1 hour)
-    timeout = aiohttp.ClientTimeout(total=3000)
-    async with aiohttp.ClientSession(timeout=timeout) as session:
+    # timeout = aiohttp.ClientTimeout(total=3000)
+    # async with aiohttp.ClientSession(timeout=timeout) as session:
+    async with aiohttp.ClientSession() as session:
         # creates task for each tile to be downloaded and waits for tasks to complete
         tasks = []
         for counter, tile_dict in enumerate(tiles_info):
@@ -558,7 +518,7 @@ async def download_ROI(
 
     # get number of splitters need to split ROI into rectangles of 1km^2 area (or less)
     num_splitters = get_num_splitters(roi_gdf)
-    logger.info("Splitting ROI into {num_splitters}x{num_splitters} tiles")
+    logger.info(f"Splitting ROI into {num_splitters}x{num_splitters} tiles")
 
     # split ROI into rectangles of 1km^2 area (or less)
     tile_coords = get_tile_coords(num_splitters, roi_gdf)
