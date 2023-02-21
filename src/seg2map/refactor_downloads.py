@@ -5,12 +5,13 @@ import os, json, shutil
 from glob import glob
 import concurrent.futures
 from datetime import datetime
+import platform
 
 from src.seg2map import exceptions
 from src.seg2map import common
 
 from typing import List, Tuple
-import platform
+
 import tqdm
 import tqdm.auto
 import zipfile
@@ -727,7 +728,7 @@ def run_get_tiles_info_per_year(
     nest_asyncio.apply()
     # get nested running loop and wait for async downloads to complete
     loop = asyncio.get_running_loop()
-    ROI_tiles = []
+    ROI_tiles = {}
     for roi_path,roi_id in zip(roi_paths,selected_ids):
         print(f"roi_path: {roi_path}")
         print(f"roi_id: {roi_id}")
@@ -735,12 +736,12 @@ def run_get_tiles_info_per_year(
             get_tiles_info_per_year(roi_path, rois_gdf,roi_id, dates)
         )
         print(f"result: {result}")
-        ROI_tiles.append(result)
+        ROI_tiles[roi_id]=result
 
     logger.info(f"ROI_tiles: {ROI_tiles}")
-    for ROI_tile in ROI_tiles:
-        for year in ROI_tile.keys():
-            mk_filepaths(ROI_tile[year])
+    for roi_id in ROI_tiles.keys():
+        for year in ROI_tiles[roi_id].keys():
+            mk_filepaths(ROI_tiles[roi_id][year])
 
     return ROI_tiles
 

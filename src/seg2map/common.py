@@ -393,12 +393,40 @@ def remove_zip(path) -> None:
     for zipped_file in zipped_files:
         os.remove(zipped_file)
 
+def unzip_dir(path:str):
+    """
+    Recursively unzips all the zip files in a given directory and its subdirectories.
+
+    Args:
+        path (str): The path to the directory to unzip.
+
+    Returns:
+        None
+
+    Raises:
+        zipfile.BadZipFile: If the zip file is corrupted or not a valid zip file.
+
+    Note:
+        This function assumes that the zip files are not password-protected.
+
+    Example:
+        >>> unzip_dir('/path/to/directory')
+
+    """
+    for root, dirs, files in os.walk(path):
+        for filename in files:
+            if filename.endswith('.zip'):
+                file_path = os.path.join(root, filename)
+                with zipfile.ZipFile(file_path, 'r') as zip_ref:
+                    zip_ref.extractall(root)
+                os.remove(file_path)
 
 def unzip(path) -> None:
     # Get a list of all the zipped files in the directory
     zipped_files = [
         os.path.join(path, f) for f in os.listdir(path) if f.endswith(".zip")
     ]
+    logger.info(f"zipped_files:{zipped_files}")
     # Unzip each file
     for zipped_file in zipped_files:
         with zipfile.ZipFile(zipped_file, "r") as zip_ref:
@@ -442,8 +470,14 @@ def get_yearly_ranges(date_range):
 
 def unzip_data(parent_dir: str):
     logger.info(f"Parent directory to find zip files: {parent_dir}")
+    logger.info(f"All files in parent dir {os.listdir(parent_dir)}")
     subdirs = get_subdirs(parent_dir)
-    logger.info(f"Subdirectories to unzip: {parent_dir}")
+    logger.info(f"Subdirectories to unzip: {subdirs}")
+    for subdir in subdirs:
+        logger.info(f"SUBDIR {os.listdir(subdir)}")
+
+    unzip_files(parent_dir)
+    remove_zip_files(parent_dir)
     unzip_files(subdirs)
     remove_zip_files(subdirs)
 
