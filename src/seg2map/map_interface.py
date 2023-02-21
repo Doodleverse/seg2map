@@ -11,6 +11,7 @@ from src.seg2map.roi import ROI
 from src.seg2map import exceptions
 from src.seg2map import exception_handler
 from src.seg2map import downloads
+from src.seg2map import new_download_codes
 from src.seg2map import refactor_downloads
 
 import geopandas as gpd
@@ -119,9 +120,11 @@ class Seg2Map:
         roi_paths = []
         with common.Timer():
             for roi_id in selected_ids:
-                roi_path = refactor_downloads.create_ROI_directories(site_path,roi_id,settings["dates"])
+                roi_path = refactor_downloads.create_ROI_directories(
+                    site_path, roi_id, settings["dates"]
+                )
                 roi_paths.append(roi_path)
-        
+
         # with common.Timer():
         #     for roi_path,roi_id in zip(roi_paths,selected_ids):
         #         print(f"roi_path: {roi_path}")
@@ -130,11 +133,24 @@ class Seg2Map:
         #         logger.info(f"tiles_per_year: {tiles_per_year}")
 
         with common.Timer():
-            tiles_per_year = refactor_downloads.run_get_tiles_info_per_year(roi_paths,self.rois.gdf,selected_ids,settings["dates"])
+            ROI_tiles = new_download_codes.run_async_function(
+                refactor_downloads.get_tiles_for_ids,
+                roi_paths=roi_paths,
+                rois_gdf=self.rois.gdf,
+                selected_ids=selected_ids,
+                dates=settings["dates"],
+            )
+            # ROI_tiles = refactor_downloads.get_tiles_for_ids(roi_paths,self.rois.gdf,selected_ids,settings["dates"])
 
-        logger.info(f"tiles_per_year: {tiles_per_year}")
+        # logger.info(f"ROI_tiles: {ROI_tiles}")
+        # with common.Timer():
+        #     refactor_downloads.run_magic_function_to_download(ROI_tiles,download_bands)
+
+        logger.info(f"ROI_tiles: {ROI_tiles}")
         with common.Timer():
-            refactor_downloads.run_magic_function_to_download(tiles_per_year,download_bands)
+            new_download_codes.run_async_function(
+                new_download_codes.download_ROIs, ROI_tiles=ROI_tiles
+            )
 
         # with common.Timer():
         #     for year in tiles_per_year.keys():

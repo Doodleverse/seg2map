@@ -26,8 +26,6 @@ logger = logging.getLogger(__name__)
 
 
 # GEE allows for at least 20 concurrent requests at once
-limit = asyncio.Semaphore(10)
-
 
 
 async def download_file(session, url, save_location):
@@ -40,7 +38,7 @@ async def download_file(session, url, save_location):
                     logger.error(f"An error occurred while downloading.{response}")
                     print(response.status)
                     return
-                with open(save_location, 'wb') as f:
+                with open(save_location, "wb") as f:
                     async for chunk in response.content.iter_chunked(1024):
                         if not chunk:
                             break
@@ -49,25 +47,34 @@ async def download_file(session, url, save_location):
         except asyncio.exceptions.TimeoutError as e:
             logger.error(e)
             logger.error(f"An error occurred while downloading {save_location}.{e}")
-            print(f"Timeout error occurred for {url}. Retrying with new session in 1 second... ({i + 1}/{retries})")
+            print(
+                f"Timeout error occurred for {url}. Retrying with new session in 1 second... ({i + 1}/{retries})"
+            )
             await asyncio.sleep(1)
             async with aiohttp.ClientSession() as new_session:
                 return await download_file(new_session, url, save_location)
         except Exception as e:
             logger.error(e)
-            logger.error(f"Download failed for {save_location} {url}. Retrying in 1 second... ({i + 1}/{retries})")
-            print(f"Download failed for {url}. Retrying in 1 second... ({i + 1}/{retries})")
+            logger.error(
+                f"Download failed for {save_location} {url}. Retrying in 1 second... ({i + 1}/{retries})"
+            )
+            print(
+                f"Download failed for {url}. Retrying in 1 second... ({i + 1}/{retries})"
+            )
             await asyncio.sleep(1)
     else:
         logger.error(f"Download failed for {save_location} {url}.")
         print(f"Download failed for {url}.")
         return
 
+
 async def create_session():
     return aiohttp.ClientSession()
 
+
 async def download_group(session, group, semaphore):
     coroutines = []
+    logger.info(f"group: {group}")
     for tile_number, tile in enumerate(group):
         polygon = tile["polygon"]
         filepath = os.path.abspath(tile["filepath"])
@@ -78,16 +85,29 @@ async def download_group(session, group, semaphore):
         for tile_id in tile["ids"]:
             logger.info(f"tile_id: {tile_id}")
             file_id = tile_id.replace("/", "_")
-            filename=filenames["multiband"] + "_" + file_id
+            filename = filenames["multiband"] + "_" + file_id
             save_location = os.path.join(filepath, filename.replace("/", "_") + ".zip")
             logger.info(f"save_location: {save_location}")
-            async with semaphore:
-                coroutines.append(async_download_tile(session,polygon,tile_id, save_location,filename,filePerBand=False))
-    await tqdm.asyncio.tqdm.gather(*coroutines, position=0, desc=f"All Downloads")
-    
+            coroutines.append(
+                async_download_tile(
+                    session,
+                    polygon,
+                    tile_id,
+                    save_location,
+                    filename,
+                    filePerBand=False,
+                    semaphore=semaphore,
+                )
+            )
+
+    # year_name=os.path.basename(group[0]['filepath'])
+    # await tqdm.asyncio.tqdm.gather(*coroutines, leave=False, desc=f"Downloading {year_name}")
+    await asyncio.gather(*coroutines)
+
     logger.info(f"Files downloaded to {group[0]['filepath']}")
-    common.unzip_dir(group[0]['filepath'])
-    common.delete_empty_dirs(group[0]['filepath'])
+    common.unzip_dir(group[0]["filepath"])
+    common.delete_empty_dirs(group[0]["filepath"])
+
 
 # async def download_group(session, urls, save_folder, semaphore):
 #     coroutines = []
@@ -116,25 +136,27 @@ async def download_group(session, group, semaphore):
 #                 logger.info(f"Files downloaded to {group[0]['filepath']} for group: {key}")
 #                 common.unzip_dir(group[0]['filepath'])
 #                 common.delete_empty_dirs(group[0]['filepath'])
-#             else: 
+#             else:
 #                 print(f"No tiles available to download for year: {key}")
 
 
 # Download the information for each year
-async def download_groups(groups,semaphore:asyncio.Semaphore):
+async def download_groups(groups, semaphore: asyncio.Semaphore):
     coroutines = []
     async with aiohttp.ClientSession() as session:
         logger.info(f"group: {groups}")
-        for key,group in groups.items():
+        for key, group in groups.items():
             logger.info(f"key: {key} group: {group}")
             if len(group) > 0:
                 coroutines.append(download_group(session, group, semaphore))
-            else: 
+            else:
                 print(f"No tiles available to download for year: {key}")
-        
-        # await asyncio.gather(*coroutines)
-        await tqdm.asyncio.tqdm.gather(*coroutines, desc=f"Downloading years")
+                logger.warning(f"No tiles available to download for year: {key}")
 
+        # await asyncio.gather(*coroutines)
+        await tqdm.asyncio.tqdm.gather(
+            *coroutines, position=1, leave=False, desc=f"Downloading years"
+        )
 
 
 # async def download_groups(groups, save_folder):
@@ -145,19 +167,22 @@ async def download_groups(groups,semaphore:asyncio.Semaphore):
 #             await cleanup(save_folder)
 
 
-
 # Download the information for each ROI
 # async def download_ROIs(ROI_tiles:dict={}):
 #     for ROI_info in ROI_tiles.values():
 #         logger.info(f"ROI_info: {ROI_info}")
 #         await download_groups(ROI_info)
 
-async def download_ROIs(ROI_tiles:dict={}):
+
+async def download_ROIs(ROI_tiles: dict = {}):
     tasks = []
-    semaphore = asyncio.Semaphore(10)
+    semaphore = asyncio.Semaphore(15)
     for ROI_info in ROI_tiles.values():
-        tasks.append(download_groups(ROI_info,semaphore))
-    await asyncio.gather(*tasks)
+        tasks.append(download_groups(ROI_info, semaphore))
+    # await asyncio.gather(*tasks)
+    await tqdm.asyncio.tqdm.gather(
+        *tasks, position=0, leave=False, desc=f"Downloading ROIs"
+    )
 
 
 # async def download_ROIs(ROI_tiles:dict={}):
@@ -168,8 +193,6 @@ async def download_ROIs(ROI_tiles:dict={}):
 #     await asyncio.gather(tasks)
 
 
-
-
 async def async_download_tile(
     session: aiohttp.ClientSession,
     polygon: List[set],
@@ -177,6 +200,7 @@ async def async_download_tile(
     filepath: str,
     filename: str,
     filePerBand: bool,
+    semaphore: asyncio.Semaphore,
 ) -> None:
     """
     Download a single tile of an Earth Engine image and save it to a zip directory.
@@ -191,12 +215,12 @@ async def async_download_tile(
     filepath (str): The path of the directory to save the downloaded zip file to.
     filename (str): The name of the zip file to be saved.
     filePerBand (bool): Whether to save each band of the image in a separate file or as a single file.
+    semaphore:asyncio.Semaphore : Limits number of concurrent requests
     Returns:
     None
     """
-    # No more than 10 concurrent workers will be able to make
-    # get request at the same time.
-    async with limit:
+    # Semaphore limits number of concurrent requests
+    async with semaphore:
         OUT_RES_M = 0.5  # output raster spatial footprint in metres
         image_ee = ee.Image(tile_id)
         # crop and download
@@ -213,10 +237,11 @@ async def async_download_tile(
         try:
             # create download url using id
             url = ee.data.makeDownloadUrl(download_id)
-            await download_file(session,url,filepath)
+            await download_file(session, url, filepath)
         except Exception as e:
             logger.error(e)
             raise e
+
 
 # async def create_group(tiles_info: List[dict], download_bands: str,session) -> None:
 #         # creates task for each tile to be downloaded and waits for tasks to complete
@@ -251,18 +276,13 @@ async def async_download_tile(
 #         common.delete_empty_dirs(os.path.dirname(filepath))
 
 
-
-
-
-def run_async_function(async_callback,**kwargs) -> None:
+def run_async_function(async_callback, **kwargs) -> None:
     if platform.system() == "Windows":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     # apply a nested loop to jupyter's event loop for async downloading
     nest_asyncio.apply()
     # get nested running loop and wait for async downloads to complete
     loop = asyncio.get_running_loop()
-    print(f"kwargs: {kwargs}")
-    print(async_callback)
-    loop.run_until_complete(
-        async_callback(**kwargs)
-    )
+    result = loop.run_until_complete(async_callback(**kwargs))
+    logger.info(f"result: {result}")
+    return result
