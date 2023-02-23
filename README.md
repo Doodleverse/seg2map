@@ -21,11 +21,7 @@
 * Provide tools to interact with those label images (download, mosaic, merge classes, etc)
 
 ## Authors
-
-Package maintainers:
 * [@dbuscombe-usgs](https://github.com/dbuscombe-usgs)
-
-Main developer:
 * [@2320sharon](https://github.com/2320sharon)
 
 Contributions:
@@ -52,12 +48,6 @@ We welcome collaboration! Please use our [Discussions](https://github.com/Doodle
     - [X] zenodo release of 5-class models for 768x768 imagery [zenodo page](https://doi.org/10.5281/zenodo.7566992)   
     - [X] set of 8-class models
     - [X] zenodo release of 8-class models for 768x768 imagery [zenodo page](https://doi.org/10.5281/zenodo.7570583)   
-  - [X] [FloodNet](https://github.com/BinaLab/FloodNet-Challenge-EARTHVISION2021) / UAV
-    - [X] 10 class [dataset](https://github.com/BinaLab/FloodNet-Challenge-EARTHVISION2021) (Background, Building-flooded, Building-non-flooded, Road-flooded, Road-non-flooded, Water, Tree, Vehicle, Pool, Grass)
-    - [X] set of models for 768 x 512 imagery
-    - [X] zenodo release for 768 x 512 models [zenodo page](https://doi.org/10.5281/zenodo.7566810)
-    - [X] set of models for 1024 x 768 imagery
-    - [X] zenodo release for 1024 x 768 models [zenodo page](https://doi.org/10.5281/zenodo.7566797)
   - [X] [Chesapeake Landcover](https://lila.science/datasets/chesapeakelandcover) (CCLC) / NAIP
     - [X] 7 class [dataset](https://lila.science/datasets/chesapeakelandcover) (water, tree canopy / forest, low vegetation / field, barren land, impervious (other), impervious (road), no data)
     - [X] set of models for 512x512 imagery 
@@ -78,15 +68,18 @@ We welcome collaboration! Please use our [Discussions](https://github.com/Doodle
     - [ ] Substrate data 6 class (dev, sand, mixed, coarse, unknown, water)
     - [ ] set of substrate models for 768x768 imagery
     - [ ] zenodo release of substrate models for 768x768 imagery  
-    - [ ] Vegetation type 7 class (shrub/forest, shrub, none/herb., none, herb., herb./shrub, dev)
+    - [ ] Vegetation type data 7 class (shrub/forest, shrub, none/herb., none, herb., herb./shrub, dev)
     - [ ] set of Vegetation type  models for 768x768 imagery
     - [ ] zenodo release of Vegetation type  models for 768x768 imagery   
-    - [ ] Vegetation density 7 class (dense, dev., moderate, moderate/dense, none, none/sparse, sparse)
+    - [ ] Vegetation density data 7 class (dense, dev., moderate, moderate/dense, none, none/sparse, sparse)
     - [ ] set of Vegetation density  models for 768x768 imagery
     - [ ] zenodo release of Vegetation density  models for 768x768 imagery  
-    - [ ] Geomorphic setting 7 class (beach, backshore, dune, washover, barrier interior, marsh, ridge/swale)
+    - [X] Geomorphic setting data 7 class (beach, backshore, dune, washover, barrier interior, marsh, ridge/swale)
     - [ ] set of Geomorphic setting  models for 768x768 imagery
     - [ ] zenodo release of Geomorphic setting  models for 768x768 imagery  
+    - [X] Supervised classification data 9 class (water, sand, herbaceous veg./low shrub, sparse/moderate, herbaceous veg/low shrub, moderate/dense, high shrub/forest, marsh/sediment, marsh/veg, marsh, high shrub/forest, development)
+    - [ ] set of Supervised classification models for 768x768 imagery
+    - [ ] zenodo release of Supervised classification models for 768x768 imagery      
   - [X] [AAAI](https://github.com/FrontierDevelopmentLab/multi3net) / aerial / high-res. sat
     - [X] 2 class dataset (other, building)
     - [X] set of building/other models for 1024x1024 imagery
@@ -101,10 +94,16 @@ We welcome collaboration! Please use our [Discussions](https://github.com/Doodle
     - [X] 2 class building dataset (other, building)
     - [X] set of building/other models for 768x768 imagery
     - [X] zenodo release for 768x768 imagery [zenodo page](https://doi.org/10.5281/zenodo.7613212)
-  - [ ] [NOAA](https://doi.org/10.5281/zenodo.7268083) / aerial / coastlines
-    - [X] 4 class dataset (water, bare sand, vegetation, development)
-    - [X] set of models for 768x512 imagery
-    - [ ] zenodo release for 768x512 imagery 
+  - [ ] Superclass models
+    - [X] 8 merged datasets for 8 separate superclass models (water, sediment, veg, herb. veg., woody veg., impervious, building, agriculture)
+    - [ ] zenodo release for 768x768 imagery / water
+    - [ ] zenodo release for 768x768 imagery / sediment
+    - [ ] zenodo release for 768x768 imagery / veg
+    - [ ] zenodo release for 768x768 imagery / herb. veg.
+    - [ ] zenodo release for 768x768 imagery / woody veg.
+    - [ ] zenodo release for 768x768 imagery / impervious
+    - [ ] zenodo release for 768x768 imagery / building
+    - [ ] zenodo release for 768x768 imagery / agriculture    
 - [ ] Develop codes/docs for selecting model
 - [ ] Develop codes/docs for applying model to make label imagery
 - [ ] Tool for mosaicing labels
@@ -127,6 +126,7 @@ We welcome collaboration! Please use our [Discussions](https://github.com/Doodle
 * Zenodo Vegetation type model release (768x768):
 * Zenodo Vegetation density model release (768x768):
 * Zenodo Geomorphic model release (768x768):
+* Zenodo Supervised classification model release (768x768):
 
 #### Chesapeake Landcover
 * [webpage](https://lila.science/datasets/chesapeakelandcover)
@@ -140,10 +140,6 @@ We welcome collaboration! Please use our [Discussions](https://github.com/Doodle
 * Zenodo model release, 2-class (768x768): Buscombe, Daniel. (2023). Doodleverse/Segmentation Zoo/Seg2Map Res-UNet models for CoastTrain water/other segmentation of RGB 768x768 orthomosaic images (v1.0) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.7574784
 * Zenodo model release, 5-class (768x768): Buscombe, Daniel. (2023). Doodleverse/Segmentation Zoo/Seg2Map Res-UNet models for CoastTrain/5-class segmentation of RGB 768x768 NAIP images (v1.0) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.7566992
 * Zenodo model release, 8-class (768x768): Buscombe, Daniel. (2023). Doodleverse/Segmentation Zoo/Seg2Map Res-UNet models for CoastTrain/8-class segmentation of RGB 768x768 NAIP images (v1.0) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.7570583
-
-#### NOAA Hurricanes
-* [data](https://doi.org/10.5281/zenodo.7268083)
-* Goldstein, Evan B., Buscombe, Daniel, Budavi, Priyanka, Favela, Jaycee, Fitzpatrick, Sharon, Gabbula, Sai Ram Ajay Krishna, Ku, Venus, Lazarus, Eli D., McCune, Ryan, Shah, Manish, Sigdel, Rajesh, & Tagner, Steven. (2022). Segmentation Labels for Emergency Response Imagery from Hurricane Barry, Delta, Dorian, Florence, Isaias, Laura, Michael, Sally, Zeta, and Tropical Storm Gordon (Version v1) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.7268083
 
 #### AAAI / Buildings / Flooded Buildings
 * [data](https://github.com/FrontierDevelopmentLab/multi3net)
@@ -172,13 +168,6 @@ We welcome collaboration! Please use our [Discussions](https://github.com/Doodle
 * [paper using EnviroAtlasdata](https://arxiv.org/pdf/2202.14000.pdf)
 * This dataset was organized to accompany the 2022 paper, [Resolving label uncertainty with implicit generative models](https://openreview.net/forum?id=AEa_UepnMDX). More details can be found [here](https://github.com/estherrolf/qr_for_landcover)
 * Zenodo model release (512x512): Buscombe, Daniel. (2023). Doodleverse/Segmentation Zoo/Seg2Map Res-UNet models for EnviroAtlas/6-class segmentation of RGB 512x512 high-res. images (v1.0) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.7576909
-
-#### FloodNet
-* [FloodNet dataset](https://github.com/BinaLab/FloodNet-Challenge-EARTHVISION2021)
-* [challenge](http://www.classic.grss-ieee.org/earthvision2021/challenge.html)
-* [paper](https://arxiv.org/abs/2012.02951)
-* Zenodo model release (768x512): Buscombe, Daniel. (2023). Doodleverse/Segmentation Zoo/Seg2Map Res-UNet models for FloodNet/10-class segmentation of RGB 768x512 UAV images (v1.0) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.7566810
-* Zenodo model release (1024x768): Buscombe, Daniel. (2023). Doodleverse/Segmentation Zoo/Seg2Map Res-UNet models for FloodNet/10-class segmentation of RGB 1024x768 UAV images (v1.0) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.7566797
 
 #### OpenEarthMap
 * [website](https://open-earth-map.org/)
@@ -227,53 +216,52 @@ We welcome collaboration! Please use our [Discussions](https://github.com/Doodle
 ## Superclasses
 
 A. Water:
-  * Coast Train 1
-  * Coast Train 2
-  * Coast Train 3
-  * FloodNet
+  * Coast Train
   * Chesapeake
   * EnviroAtlas
   * OpenEarthMap
   * DeepGlobe
   * Barrier Substrate
   * NOAA
+  * [v2: Barrier Substrate]
+  * [v2: Elwha]
 
 B. Sediment:
-  * Coast Train 2 (sediment)
-  * Coast Train 3 (sediment)
-  * Barrier Substrate (sand, mixed, coarse)
+  * Coast Train
+  * NOAA
+  * [v2: Barrier Substrate (sand, mixed, coarse)]
+  * [v2: Elwha]
 
 C. Bare:
-  * Coast Train 2 (bare terrain)
-  * Coast Train 3 (bare terrain)
   * Chesapeake (barren land)
   * EnviroAtlas (barren)
   * OpenEarthMap (bareland)
 
 D. Vegetated:
-  * Coast Train 3 (marsh veg, terrestrial veg, ag)
+  * Coast Train (marsh veg, terrestrial veg, ag)
   * FloodNet (tree, grass)
   * Chesapeake (tree canopy / forest, low vegetation / field)
   * EnviroAtlas (trees, herbaceous, shrubland)
   * OpenEarthMap (rangeland, tree, ag)
   * DeepGlobe (ag., rangeland, forest)
   * NOAA (veg)
+  * [v2: Elwha]  
+  * [v2: Barrier Substrate]
 
 E. Impervious:
-  * Coast Train 3 (dev)
   * FloodNet (Building-flooded, Building-non-flooded, Road-flooded, Road-non-flooded, vehicle)
   * Chesapeake (impervious (other), impervious (road))
   * EnviroAtlas (impervious)
   * OpenEarthMap (dev, road, building)
   * DeepGlobe (urban)
   * NOAA (dev)
+  * [v2: Elwha]
 
 F. Building:
   * OpenEarthMap (building)
   * AAAI (building)
 
 G. Agriculture:
-  * Coast Train 3 (ag)
   * OpenEarthMap (ag)
   * DeepGlobe (ag)
 
@@ -283,7 +271,8 @@ H. Woody Veg:
   * EnviroAtlas (trees)
   * OpenEarthMap (tree)
   * DeepGlobe (forest)
-
+  * [v2: Elwha]  
+  * [v2: Barrier Substrate]
 
 ## References
 
