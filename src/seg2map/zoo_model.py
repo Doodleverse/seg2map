@@ -514,14 +514,6 @@ class Zoo_Model:
         logger.info(f"Tiffs missing_jpgs {missing_jpgs}")
         return missing_jpgs
 
-    # def check_jpg_per_tif(self,directories:List[str]):
-    #     for dir in directories:
-    #         files = glob.glob(os.path.join(dir,"*.tif"))
-    #         tif_only = [name for name in files if not os.path.exists(name.replace(".tif",".jpg"))]
-    #         if len(tif_only) > 0:
-    #             return tif_only
-    #         return []
-
     def run_model(
         self,
         model_implementation: str,
@@ -566,7 +558,6 @@ class Zoo_Model:
 
         logger.info(f"session directory: {session_dir}")
 
-        output_paths = []
         for year_dir in tqdm.auto.tqdm(
             year_dirs, desc="Running models on each year", leave=False, unit_scale=True
         ):

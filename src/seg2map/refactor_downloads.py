@@ -514,17 +514,40 @@ async def get_tiles_info(
     """
     logger.info(f"dates: {dates}")
     logger.info(f"roi_path: {roi_path}")
+    logger.info(f"tile_coords: {tile_coords}")
     start_year = dates[0].strftime("%Y")
     year_path = os.path.join(roi_path, "multiband", start_year)
     tasks = []
     for tile in tile_coords:
-        task = asyncio.create_task(
+        tasks.append(
             get_ids_for_tile(year_path, gee_collection, tile, dates, semaphore)
         )
-        tasks.append(task)
 
-    results = await asyncio.gather(*tasks)
+    # create a progress bar for the number of tasks
+    pbar = tqdm.asyncio.tqdm(
+        total=len(tasks), position=0, desc=f"Getting tiles for year {start_year}"
+    )
+
+    # iterate over completed tasks using asyncio.as_completed()
+    results = []
+    for coro in asyncio.as_completed(tasks):
+        result = await coro
+        logger.info(f"coro result {result}")
+        results.append(result)
+
+        # update progress bar
+        pbar.update(1)
+
+    # close progress bar and return results
+    pbar.close()
     return {start_year: results}
+
+    # # results = await asyncio.gather(*tasks)
+    # start_year = dates[0].strftime("%Y")
+    # results = await tqdm.asyncio.tqdm.gather(
+    #     *tasks, position=0,desc=f"Getting tiles for year {start_year}"
+    # )
+    # return {start_year: results}
 
 
 def get_tile_coords(num_splitters: int, roi_gdf: gpd.GeoDataFrame) -> list[list[list]]:
@@ -550,86 +573,86 @@ def get_tile_coords(num_splitters: int, roi_gdf: gpd.GeoDataFrame) -> list[list[
     return tile_coords
 
 
-async def download_ROI(
-    download_path: str,
-    roi_gdf: gpd.GeoDataFrame,
-    roi_id: str,
-    dates: Tuple[str],
-    download_bands: str,
-) -> None:
-    """
-    Download the imagery data for a given region of interest (ROI) within specified dates. The ROI is split into smaller rectangles to minimize the amount of data that needs to be downloaded. The downloaded data is unzipped and merged into a single multiband image.
+# async def download_ROI(
+#     download_path: str,
+#     roi_gdf: gpd.GeoDataFrame,
+#     roi_id: str,
+#     dates: Tuple[str],
+#     download_bands: str,
+# ) -> None:
+#     """
+#     Download the imagery data for a given region of interest (ROI) within specified dates. The ROI is split into smaller rectangles to minimize the amount of data that needs to be downloaded. The downloaded data is unzipped and merged into a single multiband image.
 
-    Parameters:
-        download_path (str): The path where the downloaded data should be saved.
-        roi_gdf (gpd.GeoDataFrame): The geographical data for the ROI.
-        roi_id (str): A string identifier for the ROI.
-        dates (Tuple[str]): A tuple of two strings representing the start and end date of the imagery data to be downloaded.
-        download_bands (str): A string indicating which bands should be downloaded, either "multiband", "singleband", or "both".
+#     Parameters:
+#         download_path (str): The path where the downloaded data should be saved.
+#         roi_gdf (gpd.GeoDataFrame): The geographical data for the ROI.
+#         roi_id (str): A string identifier for the ROI.
+#         dates (Tuple[str]): A tuple of two strings representing the start and end date of the imagery data to be downloaded.
+#         download_bands (str): A string indicating which bands should be downloaded, either "multiband", "singleband", or "both".
 
-    Returns:
-        None
-    """
-    gee_collection = "USDA/NAIP/DOQQ"
-    # get number of splitters need to split ROI into rectangles of 1km^2 area (or less)
-    num_splitters = get_num_splitters(roi_gdf)
-    logger.info(f"Splitting ROI into {num_splitters}x{num_splitters} tiles")
+#     Returns:
+#         None
+#     """
+#     gee_collection = "USDA/NAIP/DOQQ"
+#     # get number of splitters need to split ROI into rectangles of 1km^2 area (or less)
+#     num_splitters = get_num_splitters(roi_gdf)
+#     logger.info(f"Splitting ROI into {num_splitters}x{num_splitters} tiles")
 
-    # split ROI into rectangles of 1km^2 area (or less)
-    tile_coords = get_tile_coords(num_splitters, roi_gdf)
-    logger.info(f"tile_coords: {tile_coords}")
+#     # split ROI into rectangles of 1km^2 area (or less)
+#     tile_coords = get_tile_coords(num_splitters, roi_gdf)
+#     logger.info(f"tile_coords: {tile_coords}")
 
-    # name of ROI folder to contain all downloaded data
-    roi_name = f"ID_{roi_id}_dates_{dates[0]}_to_{dates[1]}"
-    roi_path = os.path.join(download_path, roi_name)
-    # create directory to hold all multiband files
-    multiband_path = os.path.join(roi_path, "multiband")
-    create_dir(multiband_path, raise_error=False)
+#     # name of ROI folder to contain all downloaded data
+#     roi_name = f"ID_{roi_id}_dates_{dates[0]}_to_{dates[1]}"
+#     roi_path = os.path.join(download_path, roi_name)
+#     # create directory to hold all multiband files
+#     multiband_path = os.path.join(roi_path, "multiband")
+#     create_dir(multiband_path, raise_error=False)
 
-    # create subdirectories for each year
-    start_date = dates[0].split("-")[0]
-    end_date = dates[1].split("-")[0]
-    logger.info(f"start_date : {start_date } end_date : {end_date }")
-    common.create_year_directories(int(start_date), int(end_date), multiband_path)
+#     # create subdirectories for each year
+#     start_date = dates[0].split("-")[0]
+#     end_date = dates[1].split("-")[0]
+#     logger.info(f"start_date : {start_date } end_date : {end_date }")
+#     common.create_year_directories(int(start_date), int(end_date), multiband_path)
 
-    # Get list of tile info needed for download
-    tiles_info = get_tiles_info(tile_coords, dates, roi_path, gee_collection)
-    print(f"tiles_info: {tiles_info}")
-    if sum_imgs == 0:
-        raise exceptions.No_Images_Available(
-            f"No images found within these dates : {dates}"
-        )
-    # if both single band and multiband imagery will be downloaded then double number images
-    sum_imgs *= 2 if download_bands == "both" else 1
-    print(f"Total Images to Download: {sum_imgs}")
-    logger.info(f"Total Images to Download: {sum_imgs}")
+#     # Get list of tile info needed for download
+#     tiles_info = get_tiles_info(tile_coords, dates, roi_path, gee_collection)
+#     print(f"tiles_info: {tiles_info}")
+#     if sum_imgs == 0:
+#         raise exceptions.No_Images_Available(
+#             f"No images found within these dates : {dates}"
+#         )
+#     # if both single band and multiband imagery will be downloaded then double number images
+#     sum_imgs *= 2 if download_bands == "both" else 1
+#     print(f"Total Images to Download: {sum_imgs}")
+#     logger.info(f"Total Images to Download: {sum_imgs}")
 
-    # make directories for all tiles within ROI
-    mk_filepaths(tiles_info)
-    # download ROI tiles concurrently
-    await async_download_tiles(tiles_info, download_bands)
+#     # make directories for all tiles within ROI
+#     mk_filepaths(tiles_info)
+#     # download ROI tiles concurrently
+#     await async_download_tiles(tiles_info, download_bands)
 
 
-async def download_rois(
-    download_path: str,
-    roi_gdf: gpd.GeoDataFrame,
-    ids: List[str],
-    dates: Tuple[str],
-    download_bands: str,
-) -> None:
-    no_imgs_counter = 0
-    for roi_id in ids:
-        # download selected ROI
-        try:
-            gpd_data = roi_gdf[roi_gdf["id"] == roi_id]
-            await download_ROI(download_path, gpd_data, roi_id, dates, download_bands)
-        except exceptions.No_Images_Available as error:
-            no_imgs_counter += 1
-    # if every ROI has no images available raise error
-    if no_imgs_counter == len(ids):
-        raise exceptions.No_Images_Available(
-            f"No images found within these dates : {dates}"
-        )
+# async def download_rois(
+#     download_path: str,
+#     roi_gdf: gpd.GeoDataFrame,
+#     ids: List[str],
+#     dates: Tuple[str],
+#     download_bands: str,
+# ) -> None:
+#     no_imgs_counter = 0
+#     for roi_id in ids:
+#         # download selected ROI
+#         try:
+#             gpd_data = roi_gdf[roi_gdf["id"] == roi_id]
+#             await download_ROI(download_path, gpd_data, roi_id, dates, download_bands)
+#         except exceptions.No_Images_Available as error:
+#             no_imgs_counter += 1
+#     # if every ROI has no images available raise error
+#     if no_imgs_counter == len(ids):
+#         raise exceptions.No_Images_Available(
+#             f"No images found within these dates : {dates}"
+#         )
 
 
 def create_ROI_directories(download_path: str, roi_id: str, dates):
@@ -699,11 +722,33 @@ async def get_tiles_info_per_year(
         tasks.append(
             get_tiles_info(tile_coords, year_date, roi_path, gee_collection, semaphore)
         )
-    list_of_tiles = await asyncio.gather(*tasks)
+    # list_of_tiles = await asyncio.gather(*tasks)
+    # create a progress bar for the number of tasks
+    pbar = tqdm.asyncio.tqdm(
+        total=len(tasks), desc=f"Downloading tiles for ROI: {roi_id}"
+    )
 
-    for tile in list_of_tiles:
-        tile_key = list(tile.keys())[0]
-        tiles_per_year[tile_key] = tile[tile_key]
+    # iterate over completed tasks using asyncio.as_completed()
+    list_of_tiles = []
+    for coro in asyncio.as_completed(tasks):
+        result = await coro
+        tile_key = list(result.keys())[0]
+        tiles_per_year[tile_key] = result[tile_key]
+        logger.info(f"coro result {result}")
+        list_of_tiles.append(result)
+
+        # update progress bar
+        pbar.update(1)
+
+    # close progress bar and return results
+    pbar.close()
+
+    # list_of_tiles = await asyncio.gather(*tasks)
+    # logger.info(f"tiles_per_year: {list_of_tiles}")
+
+    # for tile in list_of_tiles:
+    #     tile_key = list(tile.keys())[0]
+    #     tiles_per_year[tile_key] = tile[tile_key]
     logger.info(f"tiles_per_year: {tiles_per_year}")
     return {roi_id: tiles_per_year}
 
@@ -726,16 +771,39 @@ async def get_tiles_for_ids(
     """
     ROI_tiles = {}
     tasks = []
-    semaphore = asyncio.Semaphore(20)
+    semaphore = asyncio.Semaphore(50)
     for roi_path, roi_id in zip(roi_paths, selected_ids):
         tasks.append(
             get_tiles_info_per_year(roi_path, rois_gdf, roi_id, dates, semaphore)
         )
 
-    list_of_ROIs = await asyncio.gather(*tasks)
-    for roi in list_of_ROIs:
-        roi_id = list(roi.keys())[0]
-        ROI_tiles[roi_id] = roi[roi_id]
+    # list_of_ROIs = await asyncio.gather(*tasks)
+    # create a progress bar for the number of tasks
+    pbar = tqdm.asyncio.tqdm(
+        total=len(tasks), position=0, desc=f"Getting tiles for each ROI"
+    )
+
+    # iterate over completed tasks using asyncio.as_completed()
+    # list_of_ROIs = []
+    for coro in asyncio.as_completed(tasks):
+        result = await coro
+        roi_id = list(result.keys())[0]
+        ROI_tiles[roi_id] = result[roi_id]
+        # list_of_ROIs.append(result)
+
+        # update progress bar
+        pbar.update(1)
+
+    # close progress bar and return results
+    pbar.close()
+
+    # list_of_ROIs = await tqdm.asyncio.tqdm.gather(
+    #     *tasks, position=0, desc=f"Getting tiles for each ROI"
+    # )
+
+    # for roi in list_of_ROIs:
+    #     roi_id = list(roi.keys())[0]
+    #     ROI_tiles[roi_id] = roi[roi_id]
 
     logger.info(f"ROI_tiles: {ROI_tiles}")
     for roi_id in ROI_tiles.keys():

@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 
 import asyncio
 
+
 class DownloadManager:
     def __init__(self, session_manager, max_concurrent_downloads=10):
         self.session_manager = session_manager
@@ -54,7 +55,9 @@ class DownloadManager:
                 for item in batch:
                     task = asyncio.create_task(self.download_item(session, item))
                     tasks.append(task)
-                completed, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
+                completed, pending = await asyncio.wait(
+                    tasks, return_when=asyncio.FIRST_EXCEPTION
+                )
                 while len(pending) > 0:
                     new_tasks = []
                     async with self.session_manager.get_session() as session:
@@ -67,11 +70,15 @@ class DownloadManager:
                                 print(f"Error: {e}")
                                 session.close()
                                 async with self.session_manager.get_session() as session:
-                                    new_task = asyncio.create_task(self.download_item(session, task.item))
+                                    new_task = asyncio.create_task(
+                                        self.download_item(session, task.item)
+                                    )
                                     new_tasks.append(new_task)
                                 continue
                             new_tasks.append(task)
-                        completed, pending = await asyncio.wait(new_tasks, return_when=asyncio.FIRST_EXCEPTION)
+                        completed, pending = await asyncio.wait(
+                            new_tasks, return_when=asyncio.FIRST_EXCEPTION
+                        )
             await self.cleanup(batch, completed)
 
     async def download_item(self, session, item):
@@ -81,7 +88,6 @@ class DownloadManager:
     async def cleanup(self, batch, completed):
         # cleanup logic
         pass
-
 
 
 class DownloadManager:
@@ -97,7 +103,6 @@ class DownloadManager:
     def get_limit(self):
         return self.limit
 
-
     async def download(self, url, session):
         # Implement your download logic here
         pass
@@ -106,7 +111,7 @@ class DownloadManager:
         # Check if any sessions are about to timeout
         now = asyncio.get_running_loop().time()
         self.sessions = [s for s in self.sessions if s.expiration_time > now]
-        
+
         # Create new sessions if necessary
         while len(self.sessions) < self.max_concurrent_sessions:
             session = aiohttp.ClientSession()
@@ -123,7 +128,9 @@ class DownloadManager:
         # Monitor sessions and tasks
         while len(self.tasks) > 0:
             await self.check_sessions()
-            done, pending = await asyncio.wait(self.tasks, return_when=asyncio.FIRST_COMPLETED)
+            done, pending = await asyncio.wait(
+                self.tasks, return_when=asyncio.FIRST_COMPLETED
+            )
             for task in done:
                 self.tasks.remove(task)
                 self.completed_tasks.add(task)

@@ -188,8 +188,8 @@ class UI_Models:
 
     def _create_widgets(self):
         self.model_implementation = RadioButtons(
-            options=[ "BEST","ENSEMBLE"],
-            value= "BEST",
+            options=["BEST", "ENSEMBLE"],
+            value="BEST",
             description="Select:",
             disabled=False,
         )

@@ -120,44 +120,25 @@ class Seg2Map:
         roi_paths = []
         with common.Timer():
             for roi_id in selected_ids:
-                roi_path = refactor_downloads.create_ROI_directories(
+                roi_path = new_download_codes.create_ROI_directories(
                     site_path, roi_id, settings["dates"]
                 )
                 roi_paths.append(roi_path)
 
-        # with common.Timer():
-        #     for roi_path,roi_id in zip(roi_paths,selected_ids):
-        #         print(f"roi_path: {roi_path}")
-        #         print(f"roi_id: {roi_id}")
-        #         tiles_per_year = refactor_downloads.get_tiles_info_per_year(roi_path,self.rois.gdf,roi_id,settings["dates"])
-        #         logger.info(f"tiles_per_year: {tiles_per_year}")
-
         with common.Timer():
             ROI_tiles = new_download_codes.run_async_function(
-                refactor_downloads.get_tiles_for_ids,
+                new_download_codes.get_tiles_for_ids,
                 roi_paths=roi_paths,
                 rois_gdf=self.rois.gdf,
                 selected_ids=selected_ids,
                 dates=settings["dates"],
             )
-            # ROI_tiles = refactor_downloads.get_tiles_for_ids(roi_paths,self.rois.gdf,selected_ids,settings["dates"])
-
-        # logger.info(f"ROI_tiles: {ROI_tiles}")
-        # with common.Timer():
-        #     refactor_downloads.run_magic_function_to_download(ROI_tiles,download_bands)
 
         logger.info(f"ROI_tiles: {ROI_tiles}")
         with common.Timer():
             new_download_codes.run_async_function(
                 new_download_codes.download_ROIs, ROI_tiles=ROI_tiles
             )
-
-        # with common.Timer():
-        #     for year in tiles_per_year.keys():
-        #         refactor_downloads.mk_filepaths(tiles_per_year[year])
-        # downloads.run_async_download(
-        #     site_path, self.rois.gdf, selected_ids, settings["dates"], download_bands
-        # )
 
         # unzip and delete any empty directories
         # for dir_name in os.listdir(site_path):
@@ -299,28 +280,21 @@ class Seg2Map:
         Args:
             filepath (str): full path to config.geojson file
         """
-        # path to directory to search for config_gdf.json file
-        search_path = os.path.dirname(os.path.realpath(filepath))
-        # create path to config.json file in search_path directory
-        config_path = common.find_config_json(search_path)
-        # check if ids in geojson file already exist on map
-        json_data = common.read_json_file(config_path)
-
-        # # add new ids to self.ids and throw an error if any ids already exist in self.ids
-        # new_ids = json_data["roi_ids"]
-        # logger.info(f"json_data['roi_ids'] {json_data['roi_ids']}")
-        # self.add_to_roi_ids(new_ids)
-
         # load geodataframe from config and load features onto map
         self.load_gdf_config(filepath)
 
         # path to directory to search for config_gdf.json file
         search_path = os.path.dirname(os.path.realpath(filepath))
-        # create path to config.json file in search_path directory
-        config_path = common.find_config_json(search_path)
-        logger.info(f"Loaded json config file from {config_path}")
-        # load settings from config.json file
-        self.load_json_config(config_path)
+        try:
+            # create path to config.json file in search_path directory
+            config_path = common.find_config_json(search_path)
+            logger.info(f"Loaded json config file from {config_path}")
+            # load settings from config.json file
+            self.load_json_config(config_path)
+        except FileNotFoundError as file_error:
+            print(file_error)
+            print("No settings loaded in from config file")
+            logger.warning(f"No settings loaded in from config file. {file_error}")
 
     def load_gdf_config(self, filepath: str) -> None:
         """Load features from geodataframe located in geojson file
@@ -367,7 +341,7 @@ class Seg2Map:
         exception_handler.check_if_None(self.rois)
         json_data = common.read_json_file(filepath)
         # replace settings with settings from config file
-        self.save_settings(json_data["settings"])
+        self.save_settings(**json_data["settings"])
 
         # replace roi_settings for each ROI with contents of config.json
         new_roi_settings = {

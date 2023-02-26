@@ -45,6 +45,7 @@ logger = logging.getLogger(__name__)
 
 import time
 
+
 class Timer:
     def __enter__(self):
         self.start = time.perf_counter()
@@ -54,6 +55,7 @@ class Timer:
         self.end = time.perf_counter()
         self.interval = self.end - self.start
         print(f"Elapsed time: {self.interval:.6f} seconds")
+
 
 def group_files(files: List[str], size: int = 2) -> List[List[str]]:
     """
@@ -393,7 +395,8 @@ def remove_zip(path) -> None:
     for zipped_file in zipped_files:
         os.remove(zipped_file)
 
-def unzip_dir(path:str):
+
+def unzip_dir(path: str):
     """
     Recursively unzips all the zip files in a given directory and its subdirectories.
 
@@ -415,11 +418,12 @@ def unzip_dir(path:str):
     """
     for root, dirs, files in os.walk(path):
         for filename in files:
-            if filename.endswith('.zip'):
+            if filename.endswith(".zip"):
                 file_path = os.path.join(root, filename)
-                with zipfile.ZipFile(file_path, 'r') as zip_ref:
+                with zipfile.ZipFile(file_path, "r") as zip_ref:
                     zip_ref.extractall(root)
                 os.remove(file_path)
+
 
 def unzip(path) -> None:
     # Get a list of all the zipped files in the directory
@@ -443,8 +447,6 @@ def unzip_files(paths):
         concurrent.futures.wait(futures)
 
 
-
-
 def get_yearly_ranges(date_range):
     """
     Returns a list of start and end dates for each year in the specified date range.
@@ -455,8 +457,8 @@ def get_yearly_ranges(date_range):
     Returns:
     - A list of tuples, where each tuple contains the start and end date for a single year in the range.
     """
-    start_date = datetime.strptime(date_range[0], '%Y-%m-%d')
-    end_date = datetime.strptime(date_range[1], '%Y-%m-%d')
+    start_date = datetime.strptime(date_range[0], "%Y-%m-%d")
+    end_date = datetime.strptime(date_range[1], "%Y-%m-%d")
     year_ranges = []
     for year in range(start_date.year, end_date.year + 1):
         year_start = datetime(year, 1, 1)
@@ -467,6 +469,7 @@ def get_yearly_ranges(date_range):
             year_end = end_date
         year_ranges.append((year_start, year_end))
     return year_ranges
+
 
 def unzip_data(parent_dir: str):
     logger.info(f"Parent directory to find zip files: {parent_dir}")
@@ -577,6 +580,23 @@ def delete_empty_dirs(dir_path: str):
     remove_dirs = [subdir for subdir in subdirs if len(os.listdir(subdir)) == 0]
     for remove_dir in remove_dirs:
         os.removedirs(remove_dir)
+
+
+def get_rgb_img(img_path):
+    # Convert the jpg to an RGB
+    img_path = r"C:\1_USGS\4_seg2map\seg2map\multiband0_USDA_NAIP_DOQQ_m_4012407_se_10_1_20100612.jpg"
+    img_path = os.path.abspath(img_path)
+    im = Image.open(img_path, formats=("JPEG",)).convert("RGB")
+    out_path = img_path.replace(".jpg", "RGB_.jpg")
+    im.save(out_path)
+    return out_path
+
+
+def get_bounds(tif_path):
+    dataset = rasterio.open(tif_path)
+    b = dataset.bounds
+    bounds = [(b.bottom, b.left), (b.top, b.right)]
+    return bounds
 
 
 def create_year_directories(start_year: int, end_year: int, base_path: str) -> None:
