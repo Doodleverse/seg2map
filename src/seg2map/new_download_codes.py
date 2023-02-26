@@ -25,9 +25,6 @@ import ee
 logger = logging.getLogger(__name__)
 
 
-# GEE allows for at least 20 concurrent requests at once
-
-
 async def download_file(session, url, save_location):
     retries = 3  # number of times to retry download
     for i in range(retries):
@@ -68,10 +65,6 @@ async def download_file(session, url, save_location):
         return
 
 
-async def create_session():
-    return aiohttp.ClientSession()
-
-
 async def download_group(session, group, semaphore):
     coroutines = []
     logger.info(f"group: {group}")
@@ -100,48 +93,24 @@ async def download_group(session, group, semaphore):
                 )
             )
 
-    # year_name=os.path.basename(group[0]['filepath'])
-    # await tqdm.asyncio.tqdm.gather(*coroutines, leave=False, desc=f"Downloading {year_name}")
-    await asyncio.gather(*coroutines)
+    year_name = os.path.basename(group[0]["filepath"])
+    await tqdm.asyncio.tqdm.gather(
+        *coroutines, leave=False, desc=f"Downloading {year_name}"
+    )
+    # await asyncio.gather(*coroutines)
 
     logger.info(f"Files downloaded to {group[0]['filepath']}")
     common.unzip_dir(group[0]["filepath"])
     common.delete_empty_dirs(group[0]["filepath"])
 
 
-# async def download_group(session, urls, save_folder, semaphore):
-#     coroutines = []
-#     for url in urls:
-#         filename = os.path.basename(url)
-#         save_location = os.path.join(save_folder, filename)
-#         async with semaphore:
-#             coroutines.append(download_file(session, url, save_location))
-#     await asyncio.gather(*coroutines)
-
-# async def download_groups(url_groups, save_folder):
-#     async with aiohttp.ClientSession() as session:
-#         semaphore = asyncio.Semaphore(10)
-#         coroutines = [download_group(session, urls, save_folder, semaphore) for urls in url_groups]
-#         await asyncio.gather(*coroutines)
-
 # Download the information for each year
-# async def download_groups(groups):
-#     async with aiohttp.ClientSession() as session:
-#         semaphore = asyncio.Semaphore(10)
-#         logger.info(f"group: {groups}")
-#         for key,group in groups.items():
-#             logger.info(f"key: {key} group: {group}")
-#             if len(group) > 0:
-#                 await download_group(session, group, semaphore)
-#                 logger.info(f"Files downloaded to {group[0]['filepath']} for group: {key}")
-#                 common.unzip_dir(group[0]['filepath'])
-#                 common.delete_empty_dirs(group[0]['filepath'])
-#             else:
-#                 print(f"No tiles available to download for year: {key}")
-
-
-# Download the information for each year
-async def download_groups(groups, semaphore: asyncio.Semaphore):
+async def download_groups(
+    groups,
+    semaphore: asyncio.Semaphore,
+    group_id: str = "",
+    show_progress_bar: bool = False,
+):
     coroutines = []
     async with aiohttp.ClientSession() as session:
         logger.info(f"group: {groups}")
@@ -153,44 +122,31 @@ async def download_groups(groups, semaphore: asyncio.Semaphore):
                 print(f"No tiles available to download for year: {key}")
                 logger.warning(f"No tiles available to download for year: {key}")
 
-        # await asyncio.gather(*coroutines)
-        await tqdm.asyncio.tqdm.gather(
-            *coroutines, position=1, leave=False, desc=f"Downloading years"
-        )
-
-
-# async def download_groups(groups, save_folder):
-#     async with aiohttp.ClientSession() as session:
-#         semaphore = asyncio.Semaphore(10)
-#         for group in groups:
-#             await download_group(session, group, save_folder, semaphore)
-#             await cleanup(save_folder)
-
-
-# Download the information for each ROI
-# async def download_ROIs(ROI_tiles:dict={}):
-#     for ROI_info in ROI_tiles.values():
-#         logger.info(f"ROI_info: {ROI_info}")
-#         await download_groups(ROI_info)
+        if show_progress_bar == False:
+            await asyncio.gather(*coroutines)
+        elif show_progress_bar == True:
+            await tqdm.asyncio.tqdm.gather(
+                *coroutines,
+                position=1,
+                leave=False,
+                desc=f"Downloading years for ROI {group_id}",
+            )
 
 
 async def download_ROIs(ROI_tiles: dict = {}):
     tasks = []
     semaphore = asyncio.Semaphore(15)
-    for ROI_info in ROI_tiles.values():
-        tasks.append(download_groups(ROI_info, semaphore))
-    # await asyncio.gather(*tasks)
-    await tqdm.asyncio.tqdm.gather(
-        *tasks, position=0, leave=False, desc=f"Downloading ROIs"
-    )
-
-
-# async def download_ROIs(ROI_tiles:dict={}):
-#     tasks = []
-#     for ROI_info in ROI_tiles.values():
-#         task =  asyncio.create_task(download_groups(ROI_info))
-#         tasks.append(task)
-#     await asyncio.gather(tasks)
+    show_progress_bar = True
+    for ROI_id, ROI_info in ROI_tiles.items():
+        tasks.append(
+            download_groups(
+                ROI_info,
+                semaphore,
+                group_id=ROI_id,
+                show_progress_bar=show_progress_bar,
+            )
+        )
+    await tqdm.asyncio.tqdm.gather(*tasks, position=0, desc=f"Downloading ROIs")
 
 
 async def async_download_tile(
@@ -243,39 +199,6 @@ async def async_download_tile(
             raise e
 
 
-# async def create_group(tiles_info: List[dict], download_bands: str,session) -> None:
-#         # creates task for each tile to be downloaded and waits for tasks to complete
-#         tasks = []
-#         for counter, tile_dict in enumerate(tiles_info):
-#             polygon = tile_dict["polygon"]
-#             filepath = os.path.abspath(tile_dict["filepath"])
-#             filenames = {
-#                 "multiband": "multiband" + str(counter),
-#                 "singleband": os.path.basename(filepath),
-#             }
-#             for tile_id in tile_dict["ids"]:
-#                 logger.info(f"tile_id: {tile_id}")
-#                 file_id = tile_id.replace("/", "_")
-#                 logger.info(f"year_filepath: {filepath}")
-#                 tasks.extend(
-#                     create_tasks(
-#                         session,
-#                         polygon,
-#                         tile_id,
-#                         filepath,
-#                         filepath,
-#                         filenames,
-#                         file_id,
-#                         download_bands,
-#                     )
-#                 )
-#         # show a progress bar of all the requests in progress
-#         await tqdm.asyncio.tqdm.gather(*tasks, position=0, desc=f"All Downloads")
-#         common.unzip_data(os.path.dirname(filepath))
-#         # delete any directories that were empty
-#         common.delete_empty_dirs(os.path.dirname(filepath))
-
-
 def run_async_function(async_callback, **kwargs) -> None:
     if platform.system() == "Windows":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -286,3 +209,664 @@ def run_async_function(async_callback, **kwargs) -> None:
     result = loop.run_until_complete(async_callback(**kwargs))
     logger.info(f"result: {result}")
     return result
+
+
+import json
+import math
+import logging
+import os, json, shutil
+from glob import glob
+import concurrent.futures
+from datetime import datetime
+import platform
+
+from src.seg2map import exceptions
+from src.seg2map import common
+
+from typing import List, Tuple
+
+import tqdm
+import tqdm.auto
+import zipfile
+from area import area
+import numpy as np
+import geopandas as gpd
+import asyncio
+import aiohttp
+import tqdm.asyncio
+import nest_asyncio
+from shapely.geometry import LineString, MultiPolygon, Polygon
+from shapely.ops import split
+import ee
+from osgeo import gdal
+
+logger = logging.getLogger(__name__)
+
+
+# GEE allows for 20 concurrent requests at once
+limit = asyncio.Semaphore(20)
+
+
+def get_num_splitters(gdf: gpd.GeoDataFrame) -> int:
+    """
+    Calculates the minimum number of splitters required to divide a geographic region represented by a GeoDataFrame into smaller, equal-sized tiles whose
+    area <= 1 km^2.
+
+    max area per tile is 1 km^2
+
+    Parameters:
+        gdf (gpd.GeoDataFrame): A GeoDataFrame representing the geographic region to be split. Must contain only a single entry.
+
+    Returns:
+        int: An integer representing the minimum number of splitters required to divide the region represented by `gdf` into smaller, equal-sized tiles whose
+        area <= 1 km^2.
+
+    """
+    # convert to geojson dictionary
+    logger.info(f"gdf: {gdf}")
+    roi_json = gdf.to_json()
+    logger.info(f"roi_json: {roi_json}")
+    roi_json = json.loads(roi_json)
+    # only one feature is present select 1st feature's geometry
+    roi_geometry = roi_json["features"][0]["geometry"]
+    # get area of entire shape as squared kilometers
+    area_km2 = area(roi_geometry) / 1e6
+    logger.info(f"Area: {area_km2}")
+    if area_km2 <= 1:
+        return 0
+    # get minimum number of horizontal and vertical splitters to split area equally
+    # max area per tile is 1 km^2
+    num_splitters = math.ceil(math.sqrt(area_km2))
+    return num_splitters
+
+
+def splitPolygon(polygon: gpd.GeoDataFrame, num_splitters: int) -> MultiPolygon:
+    """
+    Split a polygon into a given number of smaller polygons by adding horizontal and vertical lines.
+
+    Parameters:
+    polygon (gpd.GeoDataFrame): A GeoDataFrame object containing a single polygon.
+    num_splitters (int): The number of horizontal and vertical lines to add.
+
+    Returns:
+    MultiPolygon: A MultiPolygon object containing the smaller polygons.
+
+    Example:
+    >>> import geopandas as gpd
+    >>> from shapely.geometry import Polygon, MultiPolygon
+    >>> poly = Polygon([(0, 0), (0, 10), (10, 10), (10, 0)])
+    >>> df = gpd.GeoDataFrame(geometry=[poly])
+    >>> result = splitPolygon(df, 2)
+    >>> result # polygon split into 4 equally sized tiles
+    """
+    minx, miny, maxx, maxy = polygon.bounds.iloc[0]
+    dx = (maxx - minx) / num_splitters  # width of a small part
+    dy = (maxy - miny) / num_splitters  # height of a small part
+    horizontal_splitters = [
+        LineString([(minx, miny + i * dy), (maxx, miny + i * dy)])
+        for i in range(num_splitters)
+    ]
+    vertical_splitters = [
+        LineString([(minx + i * dx, miny), (minx + i * dx, maxy)])
+        for i in range(num_splitters)
+    ]
+    splitters = horizontal_splitters + vertical_splitters
+    result = polygon["geometry"].iloc[0]
+    for splitter in splitters:
+        result = MultiPolygon(split(result, splitter))
+    return result
+
+
+def remove_zip(path) -> None:
+    # Get a list of all the zipped files in the directory
+    zipped_files = [
+        os.path.join(path, f) for f in os.listdir(path) if f.endswith(".zip")
+    ]
+    # Remove each zip file
+    for zipped_file in zipped_files:
+        os.remove(zipped_file)
+
+
+def unzip(path) -> None:
+    # Get a list of all the zipped files in the directory
+    zipped_files = [
+        os.path.join(path, f) for f in os.listdir(path) if f.endswith(".zip")
+    ]
+    # Unzip each file
+    for zipped_file in zipped_files:
+        with zipfile.ZipFile(zipped_file, "r") as zip_ref:
+            zip_ref.extractall(path)
+
+
+def unzip_files(paths):
+    # Create a thread pool with a fixed number of threads
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        # Submit a unzip task for each directory
+        futures = [executor.submit(unzip, path) for path in paths]
+
+        # Wait for all tasks to complete
+        concurrent.futures.wait(futures)
+
+
+def remove_zip_files(paths):
+    # Create a thread pool with a fixed number of threads
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        # Submit a remove_zip task for each directory
+        futures = [executor.submit(remove_zip, path) for path in paths]
+
+        # Wait for all tasks to complete
+        concurrent.futures.wait(futures)
+
+
+def get_subdirs(parent_dir: str):
+    # Get a list of all the subdirectories in the parent directory
+    subdirectories = []
+    for root, dirs, files in os.walk(parent_dir):
+        for d in dirs:
+            subdirectories.append(os.path.join(root, d))
+    return subdirectories
+
+
+def create_dir(dir_path: str, raise_error=True) -> str:
+    dir_path = os.path.abspath(dir_path)
+    if os.path.exists(dir_path):
+        if raise_error:
+            raise FileExistsError(dir_path)
+    else:
+        os.makedirs(dir_path)
+    return dir_path
+
+
+def copy_multiband_tifs(roi_path: str, multiband_path: str):
+    for folder in glob(
+        roi_path + os.sep + "tile*",
+        recursive=True,
+    ):
+        files = glob(folder + os.sep + "*multiband.tif")
+        [
+            shutil.copyfile(file, multiband_path + os.sep + file.split(os.sep)[-1])
+            for file in files
+        ]
+
+
+def mk_filepaths(tiles_info: List[dict]):
+    """
+    Copy multiband TIF files from a source folder to a destination folder.
+
+    This function uses the glob module to search for multiband TIF files in the subfolders of a source folder, and then uses the shutil module to copy each file to a destination folder. The name of the file in the destination folder is set to the name of the file in the source folder.
+
+    Parameters:
+
+    roi_path (str): The path of the source folder to search for multiband TIF files.
+    multiband_path (str): The path of the destination folder to copy the multiband TIF files to.
+    Returns:
+    None"""
+    filepaths = [tile_info["filepath"] for tile_info in tiles_info]
+    for filepath in filepaths:
+        create_dir(filepath, raise_error=False)
+
+
+def create_tasks(
+    session: aiohttp.ClientSession,
+    polygon: List[tuple],
+    tile_id: str,
+    filepath: str,
+    multiband_filepath: str,
+    filenames: dict,
+    file_id: str,
+    download_bands: str,
+) -> list:
+    """
+
+    creates a list of tasks that are used to download the data.
+
+    Parameters
+    ----------
+    session : aiohttp.ClientSession
+        The aiohttp.ClientSession object that handles the connection with the
+        api.
+    polygon : List[tuple] coordinates of the polygon in lat/lon
+    ex: [(1,2),(3,4)(4,3),(3,3),(1,2)]
+    tile_id : str
+        GEE id of the tile
+        ex: 'USDA/NAIP/DOQQ/m_4012407_se_10_1_20100612'
+    filepath : str
+        full path to tile directory that data will be saved to
+    multiband_filepath : str
+        The path to a directory will save multiband files
+    filenames : dict
+        A dictionary of filenames:
+        'singleband': name of singleband files
+        'multiband': name of multiband files
+    file_id : str
+        name that file will be saved as based on tile_id
+    download_bands : str
+        type of imagery to download
+        must be one of the following strings "multiband","singleband", or "both"
+
+    Returns
+    -------
+    tasks : list
+        A list of tasks that are used to download the data.
+
+    """
+    tasks = []
+    if download_bands == "multiband" or download_bands == "both":
+
+        task = asyncio.create_task(
+            async_download_tile(
+                session,
+                polygon,
+                tile_id,
+                multiband_filepath,
+                filename=filenames["multiband"] + "_" + file_id,
+                filePerBand=False,
+            )
+        )
+        tasks.append(task)
+    if download_bands == "singleband" or download_bands == "both":
+        task = asyncio.create_task(
+            async_download_tile(
+                session,
+                polygon,
+                tile_id,
+                filepath,
+                filename=filenames["singleband"] + "_" + file_id,
+                filePerBand=False,
+            )
+        )
+        tasks.append(task)
+    return tasks
+
+
+async def async_download_all_tiles(tiles_info: List[dict], download_bands: str) -> None:
+    # creates task for each tile to be downloaded and waits for tasks to complete
+    tasks = []
+    for counter, tile_dict in enumerate(tiles_info):
+        polygon = tile_dict["polygon"]
+        filepath = os.path.abspath(tile_dict["filepath"])
+        parent_dir = os.path.dirname(filepath)
+        multiband_filepath = os.path.join(parent_dir, "multiband")
+        filenames = {
+            "multiband": "multiband" + str(counter),
+            "singleband": os.path.basename(filepath),
+        }
+
+        timeout = aiohttp.ClientTimeout(total=3000)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            for tile_id in tile_dict["ids"]:
+                logger.info(f"tile_id: {tile_id}")
+                file_id = tile_id.replace("/", "_")
+                # handles edge case where tile has 2 years in the tile ID by extracting the ealier year
+                year_str = file_id.split("_")[-1][:4]
+                if len(file_id.split("_")[-2]) == 8:
+                    year_str = file_id.split("_")[-2][:4]
+                # full path to year directory within multiband dir eg. ./multiband/2012
+                year_filepath = os.path.join(multiband_filepath, year_str)
+                logger.info(f"year_filepath: {year_filepath}")
+                tasks.extend(
+                    create_tasks(
+                        session,
+                        polygon,
+                        tile_id,
+                        filepath,
+                        year_filepath,
+                        filenames,
+                        file_id,
+                        download_bands,
+                    )
+                )
+    # show a progress bar of all the requests in progress
+    await tqdm.asyncio.tqdm.gather(*tasks, position=0, desc=f"All Downloads")
+
+
+async def get_ids_for_tile(
+    year_path, gee_collection, tile, dates, semaphore: asyncio.Semaphore
+) -> dict:
+    async with semaphore:
+        collection = ee.ImageCollection(gee_collection)
+        polygon = ee.Geometry.Polygon(tile)
+        # Filter the collection to get only the images within the tile and date range
+        filtered_collection = (
+            collection.filterBounds(polygon)
+            .filterDate(*dates)
+            .sort("system:time_start", True)
+        )
+        # Get a list of all the image names in the filtered collection
+        image_list = filtered_collection.getInfo().get("features")
+        ids = [obj["id"] for obj in image_list]
+        # Create a dictionary for each tile with the information about the images to be downloaded
+        image_dict = {
+            "polygon": tile,
+            "ids": ids,
+            "filepath": year_path,
+        }
+        return image_dict
+
+
+async def get_tiles_info(
+    tile_coords: list,
+    dates: Tuple[str],
+    roi_path: str,
+    gee_collection: str,
+    semaphore: asyncio.Semaphore,
+) -> List[dict]:
+    """
+    Get information about images within the specified tile coordinates, date range, and image collection.
+    The information includes the image IDs, file path, and polygon geometry of each tile.
+
+    Parameters:
+    tile_coords (List[List[Tuple[float]]]): A list of tile coordinates, where each tile coordinate is a list of
+                                            (latitude, longitude) tuples that define the polygon of the tile.
+    dates (Tuple[str]): A tuple of two strings representing the start and end dates for the image collection.
+    roi_path (str): The path to the directory where the images will be saved.
+    gee_collection (str): The name of the image collection on Google Earth Engine.
+
+    Returns:
+    List[dict]: A list of dictionaries, where each dictionary contains information about a single tile, including the
+                polygon geometry, the IDs of the images within the tile, and the file path to the directory where the
+                images will be saved.
+    """
+    logger.info(f"dates: {dates}")
+    logger.info(f"roi_path: {roi_path}")
+    logger.info(f"tile_coords: {tile_coords}")
+    start_year = dates[0].strftime("%Y")
+    year_path = os.path.join(roi_path, "multiband", start_year)
+    tasks = []
+    for tile in tile_coords:
+        tasks.append(
+            get_ids_for_tile(year_path, gee_collection, tile, dates, semaphore)
+        )
+
+    # create a progress bar for the number of tasks
+    pbar = tqdm.asyncio.tqdm(
+        total=len(tasks), position=0, desc=f"Getting tiles for year {start_year}"
+    )
+
+    # iterate over completed tasks using asyncio.as_completed()
+    results = []
+    for coro in asyncio.as_completed(tasks):
+        # update progress bar
+        pbar.update(1)
+        result = await coro
+        logger.info(f"coro result {result}")
+        results.append(result)
+
+    # close progress bar and return results
+    pbar.close()
+    return {start_year: results}
+
+    # # results = await asyncio.gather(*tasks)
+    # start_year = dates[0].strftime("%Y")
+    # results = await tqdm.asyncio.tqdm.gather(
+    #     *tasks, position=0,desc=f"Getting tiles for year {start_year}"
+    # )
+    # return {start_year: results}
+
+
+def get_tile_coords(num_splitters: int, roi_gdf: gpd.GeoDataFrame) -> list[list[list]]:
+    """
+    Given the number of splitters and a GeoDataFrame,Splits an ROI geodataframe into tiles of 1km^2 area (or less),
+    and returns a list of lists of tile coordinates.
+
+    Args:
+        num_splitters (int): The number of splitters to divide the ROI into.
+        gpd_data (gpd.GeoDataFrame): The GeoDataFrame containing the ROI geometry.
+
+    Returns:
+        list[list[list[float]]]: A list of lists of tile coordinates, where each inner list represents the coordinates of one tile.
+        The tile coordinates are in [lat,lon] format.
+    """
+    if num_splitters == 0:
+        split_polygon = Polygon(roi_gdf["geometry"].iloc[0])
+        tile_coords = [list(split_polygon.exterior.coords)]
+    elif num_splitters > 0:
+        # split ROI into rectangles of 1km^2 area (or less)
+        split_polygon = splitPolygon(roi_gdf, num_splitters)
+        tile_coords = [list(part.exterior.coords) for part in split_polygon.geoms]
+    return tile_coords
+
+
+def create_ROI_directories(download_path: str, roi_id: str, dates):
+    """
+    Creates directories to store downloaded data for a single region of interest (ROI).
+
+    The function creates a main directory for the ROI, a subdirectory for multiband files, and subdirectories for each year in the date range.
+
+    Parameters:
+    - download_path (str): The path to the directory where downloaded data should be stored.
+    - roi_id (str): The ID of the ROI.
+    - dates (List[str]): A list containing the start and end dates of the date range in the format ['YYYY-MM-DD', 'YYYY-MM-DD'].
+
+    Returns:
+    - None
+    """
+    # name of ROI folder to contain all downloaded data
+    roi_name = f"ID_{roi_id}_dates_{dates[0]}_to_{dates[1]}"
+    roi_path = os.path.join(download_path, roi_name)
+    # create directory to hold all multiband files
+    multiband_path = common.create_directory(roi_path, "multiband")
+    # create subdirectories for each year
+    start_date = dates[0].split("-")[0]
+    end_date = dates[1].split("-")[0]
+    logger.info(f"start_date : {start_date } end_date : {end_date }")
+    common.create_year_directories(int(start_date), int(end_date), multiband_path)
+    return roi_path
+
+
+def prepare_ROI_for_download(
+    download_path: str,
+    roi_gdf: gpd.GeoDataFrame,
+    ids: List[str],
+    dates: Tuple[str],
+) -> None:
+    for roi_id in ids:
+        create_ROI_directories(download_path, roi_id, dates)
+        roi_gdf = roi_gdf.loc[id]
+
+
+async def get_tiles_info_per_year(
+    roi_path: str,
+    rois_gdf: gpd.GeoDataFrame,
+    roi_id: str,
+    dates: Tuple[str],
+    semaphore: asyncio.Semaphore,
+):
+    gee_collection = "USDA/NAIP/DOQQ"
+    logger.info(f"rois_gdf : {rois_gdf }")
+    gdf = rois_gdf.loc[[roi_id]]
+    logger.info(f"gdf : {gdf }")
+    roi_gdf = gpd.GeoDataFrame(gdf, geometry=gdf.geometry.name)
+    logger.info(f"roi_gdf : {roi_gdf }")
+    # get number of splitters need to split ROI into rectangles of 1km^2 area (or less)
+    num_splitters = get_num_splitters(roi_gdf)
+    logger.info(f"Splitting ROI into {num_splitters}x{num_splitters} tiles")
+
+    # split ROI into rectangles of 1km^2 area (or less)
+    tile_coords = get_tile_coords(num_splitters, roi_gdf)
+    logger.info(f"tile_coords: {tile_coords}")
+    yearly_ranges = common.get_yearly_ranges(dates)
+
+    tiles_per_year = {}
+    tasks = []
+    # for each year get the tiles available to download
+    for year_date in yearly_ranges:
+        tasks.append(
+            get_tiles_info(tile_coords, year_date, roi_path, gee_collection, semaphore)
+        )
+    # list_of_tiles = await asyncio.gather(*tasks)
+    # create a progress bar for the number of tasks
+    # pbar = tqdm.asyncio.tqdm(total=len(tasks), desc=f"Downloading tiles for ROI: {roi_id}")
+
+    # iterate over completed tasks using asyncio.as_completed()
+    list_of_tiles = []
+    for task in asyncio.as_completed(tasks):
+        result = await task
+        tile_key = list(result.keys())[0]
+        tiles_per_year[tile_key] = result[tile_key]
+        list_of_tiles.append(result)
+
+    logger.info(f"tiles_per_year: {tiles_per_year}")
+    return {roi_id: tiles_per_year}
+
+
+# call asyncio to run download_ROIs
+async def get_tiles_for_ids(
+    roi_paths: str,
+    rois_gdf: gpd.GeoDataFrame,
+    selected_ids: List[str],
+    dates: Tuple[str],
+) -> None:
+    """creates a nested loop that's used to asynchronously download imagery and waits for all the imagery to download
+    Args:
+        download_path (str): full path to directory to download imagery to
+        roi_gdf (gpd.GeoDataFrame): geodataframe of ROIs on the map
+        ids (List[str]): ids of ROIs to download imagery for
+        dates (Tuple[str]): start and end dates
+        download_bands (str): type of imagery to download
+            must be one of the following strings "multiband","singleband", or "both"
+    """
+    ROI_tiles = {}
+    tasks = []
+    semaphore = asyncio.Semaphore(50)
+
+    # for roi_path, roi_id in zip(roi_paths, selected_ids):
+    #     result = await get_tiles_info_per_year(roi_path, rois_gdf, roi_id, dates, semaphore)
+    #     roi_id = list(result.keys())[0]
+    #     ROI_tiles[roi_id] = result[roi_id]
+
+    for roi_path, roi_id in zip(roi_paths, selected_ids):
+        tasks.append(
+            get_tiles_info_per_year(roi_path, rois_gdf, roi_id, dates, semaphore)
+        )
+
+    # list_of_ROIs = await asyncio.gather(*tasks)
+    # create a progress bar for the number of tasks
+
+    # iterate over completed tasks using asyncio.as_completed()
+    # list_of_ROIs = []
+    # for coro in asyncio.as_completed(tasks):
+    #     result = await coro
+    #     roi_id = list(result.keys())[0]
+    #     ROI_tiles[roi_id] = result[roi_id]
+    # update progress bar
+
+    list_of_ROIs = await tqdm.asyncio.tqdm.gather(
+        *tasks, position=0, desc=f"Getting tiles for each ROI"
+    )
+
+    for roi in list_of_ROIs:
+        roi_id = list(roi.keys())[0]
+        ROI_tiles[roi_id] = roi[roi_id]
+
+    logger.info(f"ROI_tiles: {ROI_tiles}")
+    for roi_id in ROI_tiles.keys():
+        for year in ROI_tiles[roi_id].keys():
+            mk_filepaths(ROI_tiles[roi_id][year])
+
+    return ROI_tiles
+
+
+async def async_download_ROIs(ROI_tiles: List[dict], download_bands: str) -> None:
+    async with aiohttp.ClientSession() as session:
+        # creates task for each tile to be downloaded and waits for tasks to complete
+        tasks = []
+        for ROI_tile in ROI_tiles:
+            for year in ROI_tile.keys():
+                print(f"YEAR for ROI tile: {year}")
+                task = asyncio.create_task(
+                    async_download_year(ROI_tile[year], download_bands, session)
+                )
+                tasks.append(task)
+        # show a progress bar of all the requests in progress
+        await tqdm.asyncio.tqdm.gather(*tasks, position=0, desc=f"All Downloads")
+
+
+async def async_download_year(
+    tiles_info: List[dict], download_bands: str, session
+) -> None:
+    # creates task for each tile to be downloaded and waits for tasks to complete
+    tasks = []
+    for counter, tile_dict in enumerate(tiles_info):
+
+        polygon = tile_dict["polygon"]
+        filepath = os.path.abspath(tile_dict["filepath"])
+        filenames = {
+            "multiband": "multiband" + str(counter),
+            "singleband": os.path.basename(filepath),
+        }
+        for tile_id in tile_dict["ids"]:
+            logger.info(f"tile_id: {tile_id}")
+            file_id = tile_id.replace("/", "_")
+            logger.info(f"year_filepath: {filepath}")
+            tasks.extend(
+                create_tasks(
+                    session,
+                    polygon,
+                    tile_id,
+                    filepath,
+                    filepath,
+                    filenames,
+                    file_id,
+                    download_bands,
+                )
+            )
+    # show a progress bar of all the requests in progress
+    await tqdm.asyncio.tqdm.gather(*tasks, position=0, desc=f"All Downloads")
+    common.unzip_data(os.path.dirname(filepath))
+    # delete any directories that were empty
+    common.delete_empty_dirs(os.path.dirname(filepath))
+
+
+# call asyncio to run download_ROIs
+def run_magic_function_to_download(ROI_tiles: List[dict], download_bands: str) -> None:
+    if platform.system() == "Windows":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    # apply a nested loop to jupyter's event loop for async downloading
+    nest_asyncio.apply()
+    # get nested running loop and wait for async downloads to complete
+    loop = asyncio.get_running_loop()
+    loop.run_until_complete(async_download_ROIs(ROI_tiles, download_bands))
+
+
+import tqdm
+import tqdm.auto
+import tqdm.asyncio
+import asyncio
+
+
+async def super_sub_coroutine(delay):
+    print(f"Starting super_sub_coroutine with delay {delay}...")
+    await asyncio.sleep(delay)
+    print(f"super_sub_coroutine with delay {delay} is done!")
+    return delay
+
+
+async def sub_coroutine(delay):
+    await asyncio.sleep(delay)
+    print(f"Starting sub_coroutine with delay {delay}...")
+    coroutines = [super_sub_coroutine(i) for i in [10, 15]]
+    await asyncio.gather(*coroutines)
+    print(f"Csub_coroutine with delay {delay} is done!")
+    return delay
+
+
+async def my_coroutine(delay):
+    print(f"Starting coroutine with delay {delay}...")
+    coroutines = [sub_coroutine(i) for i in [9, 13, 16]]
+    await tqdm.asyncio.tqdm.gather(
+        *coroutines, position=0, desc=f"Downloading subroutines"
+    )
+    print(f"Coroutine with delay {delay} is done!")
+    return delay
+
+
+async def main():
+    # create a list of coroutines with different delays
+    coroutines = [my_coroutine(i) for i in [4, 3, 2]]
+
+    # schedule the coroutines and wait for them to complete
+    results = await asyncio.gather(*coroutines)
+    # results = await asyncio.gather(*coroutines)
+
+    print(f"All coroutines are done, results: {results}")
