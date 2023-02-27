@@ -96,13 +96,20 @@ class UI_Models:
             "DeepGlobe_RGB_7class_7576898",
             "EnviroAtlas_RGB_6class_7576909",
             "AAAI-Buildings_RGB_2class_7607895",
+            "aaai_floodedbuildings_RGB_2class_7622733",
+            "xbd_building_RGB_2class_7613212",
+            "xbd_damagedbuilding_RGB_4class_7613175",
         ]
+
         # list of RGB  models available
         self.coastal_landcover_models = [
-            "CoastTrain_RGB_2class_7574784",
-            "CoastTrain_RGB_5class_7566992",
-            "CoastTrain_RGB_8class_7570583",
-            "Chesappeake_RGB_7class_7576904",
+            "chesapeake_RGB_7class_7576904",
+            "orthoCT_RGB_2class_7574784",
+            "orthoCT_RGB_5class_7566992",
+            "orthoCT_RGB_5class_segformer_7641708",
+            "orthoCT_RGB_8class_7570583",
+            "orthoCT_RGB_8class_segformer_7641724",
+            "chesapeake_7class_segformer_7677506",
         ]  # @todo add barrier islands model when its up
 
         self.session_name = ""

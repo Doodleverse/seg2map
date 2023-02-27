@@ -556,10 +556,8 @@ class Zoo_Model:
         search_pattern = r"config_gdf.*\.geojson"
         parent_directory = os.path.dirname(src_directory)
         print(f"parent_directory : {parent_directory }")
-        config_gdf_path = common.find_config_json(
-           parent_directory , search_pattern
-        )
-        config_json_path = common.find_config_json(parent_directory,r"^config\.json$")
+        config_gdf_path = common.find_config_json(parent_directory, search_pattern)
+        config_json_path = common.find_config_json(parent_directory, r"^config\.json$")
 
         year_dirs = common.get_matching_dirs(src_directory, pattern=r"^\d{4}$")
 
@@ -588,6 +586,7 @@ class Zoo_Model:
                 model_year_dict["sample_direc"],
                 model_list,
                 metadatadict,
+                model_types,
                 use_tta,
                 use_otsu,
             )
@@ -641,6 +640,7 @@ class Zoo_Model:
         sample_direc: str,
         model_list: list,
         metadatadict: dict,
+        model_types,
         use_tta: bool,
         use_otsu: bool,
     ):
@@ -657,6 +657,7 @@ class Zoo_Model:
                 file_to_seg,
                 model_list,
                 metadatadict,
+                model_types[0],
                 sample_direc=sample_direc,
                 NCLASSES=self.NCLASSES,
                 N_DATA_BANDS=self.N_DATA_BANDS,
@@ -677,9 +678,11 @@ class Zoo_Model:
         for weights in weights_list:
             # "fullmodel" is for serving on zoo they are smaller and more portable between systems than traditional h5 files
             # gym makes a h5 file, then you use gym to make a "fullmodel" version then zoo can read "fullmodel" version
-            configfile = weights.replace(".h5", ".json").replace("weights", "config")
+            configfile = (
+                weights.replace(".h5", ".json").replace("weights", "config").strip()
+            )
             if "fullmodel" in configfile:
-                configfile = configfile.replace("_fullmodel", "")
+                configfile = configfile.replace("_fullmodel", "").strip()
             with open(configfile) as f:
                 config = json.load(f)
             self.TARGET_SIZE = config.get("TARGET_SIZE")
@@ -867,7 +870,7 @@ class Zoo_Model:
         # read raw json and get list of available files in zenodo release
         response = requests.get(root_url)
         json_content = json.loads(response.text)
-        logger.info(f"json_content {json_content}")
+        # logger.info(f"json_content {json_content}")
         files = json_content["files"]
 
         downloaded_models_path = self.get_downloaded_models_dir()
