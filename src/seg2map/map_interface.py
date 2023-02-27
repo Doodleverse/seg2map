@@ -539,10 +539,21 @@ class Seg2Map:
         """Remove the bbox, all rois from the map"""
         self.remove_all_rois()
 
+    def remove_seg(self):
+        for layer in self.seg_layers:
+            if layer in self.map.layers:
+                self.map.remove(layer)
+        for layer in self.original_layers:
+            if layer in self.map.layers:
+                self.map.remove(layer)
+        self.original_layers = []
+        self.seg_layers = []
+        self.years = []
+
     def remove_layer_by_name(self, layer_name: str):
         existing_layer = self.map.find_layer(layer_name)
         if existing_layer is not None:
-            self.map.remove_layer(existing_layer)
+            self.map.remove(existing_layer)
         logger.info(f"Removed layer {layer_name}")
 
     def replace_layer_by_name(
@@ -597,7 +608,7 @@ class Seg2Map:
         self.draw_control.clear()
         existing_layer = self.map.find_layer(ROI.LAYER_NAME)
         if existing_layer is not None:
-            self.map.remove_layer(existing_layer)
+            self.map.remove(existing_layer)
         self.rois = ROI()
         logger.info("Removing all ROIs from map")
         # Remove the selected and unselected rois

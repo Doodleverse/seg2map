@@ -192,6 +192,11 @@ class UI:
         )
         self.remove_button = Button(description=f"Remove ROIs", style=self.remove_style)
         self.remove_button.on_click(self.remove_feature_from_map)
+
+        self.remove_seg_button = Button(
+            description=f"Remove Imagery", style=self.remove_style
+        )
+        self.remove_seg_button.on_click(self.remove_seg_clicked)
         # define remove all button
         self.remove_all_button = Button(
             description="Remove all", style=self.remove_style
@@ -201,6 +206,7 @@ class UI:
             [
                 remove_instr,
                 self.remove_button,
+                self.remove_seg_button,
                 self.remove_all_button,
             ]
         )
@@ -562,6 +568,16 @@ class UI:
                 print(f"Removing ROIs")
                 self.seg2map.launch_delete_box(self.seg2map.remove_box)
                 # self.Seg2Map.remove_all_rois()
+        except Exception as error:
+            # renders error message as a box on map
+            exception_handler.handle_exception(error, self.seg2map.warning_box)
+
+    @debug_view.capture(clear_output=True)
+    def remove_seg_clicked(self, btn):
+        UI.debug_view.clear_output(wait=True)
+        try:
+            self.seg2map.remove_seg()
+
         except Exception as error:
             # renders error message as a box on map
             exception_handler.handle_exception(error, self.seg2map.warning_box)
