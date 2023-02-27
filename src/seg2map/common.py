@@ -1053,7 +1053,7 @@ def get_ids_with_invalid_area(
         raise TypeError("Must be geodataframe")
 
 
-def find_config_json(search_path: str, search_pattern: str = "") -> str:
+def find_config_json(search_path: str, search_pattern: str = None) -> str:
     """Searches for a `config.json` file in the specified directory
 
     Args:
@@ -1066,9 +1066,10 @@ def find_config_json(search_path: str, search_pattern: str = "") -> str:
         FileNotFoundError: if a `config.json` file is not found in the specified directory
     """
     logger.info(f"searching directory for config.json: {search_path}")
-    if search_pattern != "":
-        search_pattern = r"config.*\.json"
+    if search_pattern == None:
+        search_pattern = r"^config\.json$"
     config_regex = re.compile(search_pattern, re.IGNORECASE)
+    logger.info(f"search_pattern: {search_pattern}")
 
     for file in os.listdir(search_path):
         if config_regex.match(file):
