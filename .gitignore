@@ -6,6 +6,14 @@
 *multiband*
 *USDA*
 
+data\*
+sessions\*
+./sessions/*
+/sessions/
+src\*\downloaded_models\*
+*segmentation_data_*
+*downloaded_models*
+
 data/*
 config_gdf.geojson
 config.json
