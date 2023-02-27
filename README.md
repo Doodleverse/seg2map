@@ -5,7 +5,7 @@
 ![](https://user-images.githubusercontent.com/3596509/194389595-82ade668-daf0-4d24-b1a0-6ecf897f40fe.gif)
 
 ## Overview:
-* Seg2Map facilitates application of Deep Learning-based image segmentation models and apply them to high-resolution (~1m or less spatial footprint) geospatial imagery, in order to make high-resolution label maps. 
+* Seg2Map facilitates application of Deep Learning-based image segmentation models and apply them to high-resolution (~1m or less spatial footprint) geospatial imagery, in order to make high-resolution label maps. Please see our [wiki](https://github.com/Doodleverse/seg2map/wiki) for more information.
 
 * The principle aim is to generate time-series of label maps from a time-series of imagery, in order to detect and assess land use/cover change. This project also demonstrates how to apply generic models for land-use/cover on publicly available high-resolution imagery at arbitrary locations.
 
