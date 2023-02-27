@@ -554,11 +554,12 @@ class Zoo_Model:
         session_dir = common.create_directory(session_path, session_name)
 
         search_pattern = r"config_gdf.*\.geojson"
-
+        parent_directory = os.path.dirname(src_directory)
+        print(f"parent_directory : {parent_directory }")
         config_gdf_path = common.find_config_json(
-            os.path.dirname(src_directory), search_pattern
+           parent_directory , search_pattern
         )
-        config_json_path = common.find_config_json(os.path.dirname(src_directory))
+        config_json_path = common.find_config_json(parent_directory,r"^config\.json$")
 
         year_dirs = common.get_matching_dirs(src_directory, pattern=r"^\d{4}$")
 

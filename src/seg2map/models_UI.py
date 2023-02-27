@@ -336,8 +336,8 @@ class UI_Models:
             )
             return
         # Disable run and open results buttons while the model is running
-        self.open_results_button.disabled = True
-        self.run_model_button.disabled = True
+        # self.open_results_button.disabled = True
+        # self.run_model_button.disabled = True
 
         # gets GPU or CPU depending on whether use_GPU is True
         use_GPU = self.model_dict["use_GPU"]
@@ -358,9 +358,9 @@ class UI_Models:
             use_otsu=use_otsu,
             use_tta=use_tta,
         )
-        # Enable run and open results buttons when model has executed
-        self.run_model_button.disabled = False
-        self.open_results_button.disabled = False
+        # # Enable run and open results buttons when model has executed
+        # self.run_model_button.disabled = False
+        # self.open_results_button.disabled = False
 
     @run_model_view.capture(clear_output=True)
     def open_results_button_clicked(self, button):
