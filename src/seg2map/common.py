@@ -52,37 +52,70 @@ from io import BytesIO
 import rasterio
 from ipyleaflet import ImageOverlay
 
-def get_rgb_img(img_path:str)->str:    
-    #Convert image to an RGB
-    if img_path.endswith('.jpg'):
-        im=Image.open(img_path,formats=('JPEG',)).convert('RGB')
-        out_path = img_path.replace(".jpg","RGB_.jpg")
-    elif img_path.endswith('.png'):
-        im=Image.open(img_path,formats=('PNG',)).convert('RGB')
-        out_path = img_path.replace(".png","RGB_.png")
+
+def get_rgb_img(img_path: str) -> str:
+    """
+    Converts an image to RGB format and saves it to a new file.
+    Compatable image types: '.jpg' and '.png'
+
+    Parameters:
+    img_path (str): The file path of the image to be converted.
+
+    Returns:
+    str: The file path of the converted image.
+    """
+    if img_path.endswith(".jpg"):
+        im = Image.open(img_path, formats=("JPEG",)).convert("RGB")
+        out_path = img_path.replace(".jpg", "RGB_.jpg")
+    elif img_path.endswith(".png"):
+        im = Image.open(img_path, formats=("PNG",)).convert("RGB")
+        out_path = img_path.replace(".png", "RGB_.png")
     im.save(out_path)
     return out_path
 
 
 def get_bounds(tif_path):
+    """
+    Gets the bounds of a GeoTIFF file.
+
+    Parameters:
+    tif_path (str): The file path of the GeoTIFF file.
+
+    Returns:
+    Tuple[Tuple[float, float], Tuple[float, float]]: The bounds of the GeoTIFF file as a tuple of two tuples.
+    The first tuple contains the (latitude, longitude) coordinates of the bottom left corner of the image, and the
+    second tuple contains the (latitude, longitude) coordinates of the top right corner of the image.
+    """
     dataset = rasterio.open(tif_path)
     b = dataset.bounds
     bounds = [(b.bottom, b.left), (b.top, b.right)]
     return bounds
 
 
-def get_image_overlay(tif_path, jpg_path,layer_name:str):
-    bounds= get_bounds(tif_path)
+def get_image_overlay(tif_path, jpg_path, layer_name: str):
+    """
+    Creates an image overlay for a GeoTIFF file using a JPG image.
+
+    Parameters:
+    tif_path (str): The file path of the GeoTIFF file.
+    jpg_path (str): The file path of the JPG image.
+    layer_name (str): The name of the layer.
+
+    Returns:
+    ImageOverlay: An image overlay for the GeoTIFF file.
+    """
+    bounds = get_bounds(tif_path)
     RGB_path = get_rgb_img(jpg_path)
     image = Image.open(RGB_path)
     f = BytesIO()
-    image.save(f,"JPEG")
+    image.save(f, "JPEG")
 
     data = b64encode(f.getvalue())
     data = data.decode("ascii")
     url = "data:image/JPEG;base64," + data
     image_overlay = ImageOverlay(url=url, bounds=bounds, name=layer_name)
     return image_overlay
+
 
 class Timer:
     def __enter__(self):
@@ -96,6 +129,17 @@ class Timer:
 
 
 def create_dir_chooser(callback, title: str = None, starting_directory: str = "data"):
+    """
+    Creates a file chooser widget for selecting directories and a button to close the file chooser.
+
+    Parameters:
+    callback (function): A function to be called when the user selects a directory.
+    title (str): The title of the file chooser (optional).
+    starting_directory (str): The starting directory of the file chooser (default is "data").
+
+    Returns:
+    HBox: A horizontal box containing the file chooser and close button.
+    """
     padding = "0px 0px 0px 5px"  # upper, right, bottom, left
     inital_path = os.path.join(os.getcwd(), starting_directory)
     if not os.path.exists(inital_path):
@@ -126,6 +170,7 @@ def create_dir_chooser(callback, title: str = None, starting_directory: str = "d
     chooser = HBox([dir_chooser, close_button])
     return chooser
 
+
 def group_tif_locations(dir_path):
     """
     Groups GeoTIFF files at the same location in a directory by their georeferencing information.
@@ -140,10 +185,14 @@ def group_tif_locations(dir_path):
         groups = group_tif_locations("path/to/tif_directory")
         # Returns a list of groups of file paths to GeoTIFF files that are at the same location.
     """
-    tif_files = [os.path.join(dir_path, f) for f in os.listdir(dir_path) if f.endswith('.tif') or f.endswith('.tiff')]
-    
+    tif_files = [
+        os.path.join(dir_path, f)
+        for f in os.listdir(dir_path)
+        if f.endswith(".tif") or f.endswith(".tiff")
+    ]
+
     tif_groups = {}
-    
+
     for tif_file in tif_files:
         dataset = gdal.Open(tif_file, gdal.GA_ReadOnly)
         geo_transform = dataset.GetGeoTransform()
@@ -155,20 +204,25 @@ def group_tif_locations(dir_path):
                 tif_groups[group_key].append(tif_file)
                 found_group = True
                 break
-        
+
         if not found_group:
             tif_groups[(x_min, x_size, y_max, y_size)] = [tif_file]
-    
+
     return list(tif_groups.values())
 
+
 def delete_tifs_at_same_location(path):
-    multiple_tifs_same_location = [tifs for tifs in group_tif_locations(path) if len(tifs)>1]
+    multiple_tifs_same_location = [
+        tifs for tifs in group_tif_locations(path) if len(tifs) > 1
+    ]
     delete_tifs_with_black_pixels(multiple_tifs_same_location)
+
 
 def delete_tifs_except(tif_paths, keep_tif_path):
     for tif_path in tif_paths:
         if tif_path != keep_tif_path:
             os.remove(tif_path)
+
 
 def delete_tifs_with_black_pixels(tif_groups):
     # only keep tifs where ratio of non-black pixels to total pixels is the highest
@@ -194,7 +248,7 @@ def get_pixel_ratio(tif_path):
     img = imageio.imread(tif_path)
     total_pixels = (img >= 0).sum()
     non_black_pixels = (img > 0).sum()
-    pixel_ratio = non_black_pixels/total_pixels
+    pixel_ratio = non_black_pixels / total_pixels
     return pixel_ratio
 
 
@@ -214,16 +268,32 @@ def group_files(files: List[str], size: int = 2) -> List[List[str]]:
     grouped_files = [files[n : n + size] for n in range(0, len(files), size)]
     return grouped_files
 
-def create_merged_multispectural_for_ROIs(roi_paths):
+
+def create_merged_multispectural_for_ROIs(roi_paths: List[str]) -> None:
+    """
+    Creates a merged multispectral image for each year of ROI data in the specified directories.
+
+    Parameters:
+    roi_paths (List[str]): A list of file paths to directories containing ROI data.
+
+    Returns:
+    None: This function does not return anything.
+    """
     for roi_path in roi_paths:
         year_dirs = get_matching_dirs(roi_path, pattern=r"^\d{4}$")
         for year_path in year_dirs:
-            glob_str = os.path.join(year_path,"*merged_multispectral.jpg")
-            if len(glob(glob_str))>=1:
+            glob_str = os.path.join(year_path, "*merged_multispectral.jpg")
+            if len(glob(glob_str)) >= 1:
                 continue
-            if len(os.listdir(year_path))==0:
+            if len(os.listdir(year_path)) == 0:
                 continue
-            get_merged_multispectural(year_path)
+            try:
+                get_merged_multispectural(year_path)
+            except Exception as merge_error:
+                logger.error(f"Year: {year_path}\nmerge_error: {merge_error}")
+                print(f"Year: {year_path}\nmerge_error: {merge_error}")
+                continue
+
 
 def get_merged_multispectural(src_path: str) -> str:
     """
@@ -256,6 +326,7 @@ def get_merged_multispectural(src_path: str) -> str:
     deleted_files = delete_files(pattern, src_path)
     logger.info(f"deleted_files {deleted_files}")
     return merged_file
+
 
 def merge_files(src_files: str, dest_path: str, create_jpg: bool = True) -> str:
     """Merge a list of GeoTIFF files into a single JPEG file.
@@ -982,7 +1053,7 @@ def get_ids_with_invalid_area(
         raise TypeError("Must be geodataframe")
 
 
-def find_config_json(search_path: str,search_pattern:str="") -> str:
+def find_config_json(search_path: str, search_pattern: str = "") -> str:
     """Searches for a `config.json` file in the specified directory
 
     Args:
@@ -996,7 +1067,7 @@ def find_config_json(search_path: str,search_pattern:str="") -> str:
     """
     logger.info(f"searching directory for config.json: {search_path}")
     if search_pattern != "":
-        search_pattern =r"config.*\.json"
+        search_pattern = r"config.*\.json"
     config_regex = re.compile(search_pattern, re.IGNORECASE)
 
     for file in os.listdir(search_path):

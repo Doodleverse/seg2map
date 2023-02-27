@@ -553,9 +553,11 @@ class Zoo_Model:
         session_path = common.create_directory(os.getcwd(), "sessions")
         session_dir = common.create_directory(session_path, session_name)
 
-        search_pattern =r"config_gdf.*\.geojson"
+        search_pattern = r"config_gdf.*\.geojson"
 
-        config_gdf_path = common.find_config_json(os.path.dirname(src_directory),search_pattern)
+        config_gdf_path = common.find_config_json(
+            os.path.dirname(src_directory), search_pattern
+        )
         config_json_path = common.find_config_json(os.path.dirname(src_directory))
 
         year_dirs = common.get_matching_dirs(src_directory, pattern=r"^\d{4}$")
@@ -588,7 +590,6 @@ class Zoo_Model:
                 use_tta,
                 use_otsu,
             )
-
 
         for year_dir in tqdm.auto.tqdm(
             year_dirs, desc="Creating tifs", leave=False, unit_scale=True
@@ -627,13 +628,12 @@ class Zoo_Model:
             logger.info(f"merged_multispectural: {merged_multispectural}")
 
             # copy config files to session directory
-            dst_file = os.path.join(session_year_path,"config_gdf.geojson")
+            dst_file = os.path.join(session_year_path, "config_gdf.geojson")
             logger.info(f"dst_config_gdf: {dst_file}")
-            shutil.copy(config_gdf_path,dst_file)
-            dst_file = os.path.join(session_year_path,"config.json")
+            shutil.copy(config_gdf_path, dst_file)
+            dst_file = os.path.join(session_year_path, "config.json")
             logger.info(f"dst_config.json: {dst_file}")
-            shutil.copy(config_json_path,dst_file)
-
+            shutil.copy(config_json_path, dst_file)
 
     def compute_segmentation(
         self,

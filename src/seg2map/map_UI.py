@@ -216,29 +216,29 @@ class UI:
             description="Load Segmentations", style=self.load_style
         )
         self.load_segmentations_button.on_click(self.on_load_session_clicked)
-        
+
         self.opacity_slider = FloatSlider(
             value=1.0,
             min=0,
             max=1.0,
             step=0.01,
-            description='Opacity:',
+            description="Opacity:",
             disabled=False,
             continuous_update=False,
-            orientation='horizontal',
+            orientation="horizontal",
             readout=True,
-            readout_format='.2f',
+            readout_format=".2f",
         )
 
-        years= ['2010','2012','2013','2015']
-        self.year_slider=SelectionSlider(
+        years = ["2010", "2012", "2013", "2015"]
+        self.year_slider = SelectionSlider(
             options=years,
             value=years[0],
-            description='Select a year:',
+            description="Select a year:",
             disabled=False,
             continuous_update=False,
-            orientation='horizontal',
-            readout=True
+            orientation="horizontal",
+            readout=True,
         )
 
         def year_slider_changed(change):
@@ -255,21 +255,20 @@ class UI:
                 if year not in layer.name and layer.name != "ROI":
                     if layer in self.seg2map.map.layers:
                         self.seg2map.map.remove(layer)
-            
-            
+
         self.year_slider.observe(year_slider_changed, "value")
 
         def opacity_slider_changed(change):
             year = self.year_slider.value
-            layer_name=""
+            layer_name = ""
             for layer in self.seg2map.seg_layers:
                 if year in layer.name:
                     layer_name = layer.name
 
             value = self.opacity_slider.value
             if layer_name != "":
-                self.seg2map.map.layer_opacity(layer_name,  value)
-            
+                self.seg2map.map.layer_opacity(layer_name, value)
+
         self.opacity_slider.observe(opacity_slider_changed, "value")
 
         segmentation_box = VBox(
@@ -359,20 +358,14 @@ class UI:
         files_controls = self.get_file_controls()
         settings_controls = self.get_settings_vbox()
         remove_buttons = self.remove_buttons()
-        segmentation_controls=self.segmentation_controls()
+        segmentation_controls = self.segmentation_controls()
 
         self.save_button = Button(
             description=f"Save ROIs to file", style=self.save_style
         )
         self.save_button.on_click(self.save_to_file_btn_clicked)
 
-        save_vbox = VBox(
-            [
-                files_controls,
-                remove_buttons,
-                segmentation_controls
-            ]
-        )
+        save_vbox = VBox([files_controls, remove_buttons, segmentation_controls])
         config_vbox = VBox(
             [self.instr_config_btns, self.load_configs_button, self.save_config_button]
         )
@@ -478,7 +471,6 @@ class UI:
             row.children[index].close()
         row.children = []
 
-
     @debug_view.capture(clear_output=True)
     def on_load_session_clicked(self, button):
         # Prompt user to select a config geojson file
@@ -486,13 +478,13 @@ class UI:
             try:
                 if filechooser.selected:
                     self.seg2map.load_session(filechooser.selected)
-                    if self.seg2map.years==[]:
-                        self.year_slider.disabled=True
-                        self.opacity_slider.disabled=True
-                    elif self.seg2map.years!=[]:
-                        self.year_slider.disabled=False
-                        self.opacity_slider.disabled=False
-                        self.year_slider.options=self.seg2map.years
+                    if self.seg2map.years == []:
+                        self.year_slider.disabled = True
+                        self.opacity_slider.disabled = True
+                    elif self.seg2map.years != []:
+                        self.year_slider.disabled = False
+                        self.opacity_slider.disabled = False
+                        self.year_slider.options = self.seg2map.years
                         self.year_slider.value = self.seg2map.years[0]
 
             except Exception as error:

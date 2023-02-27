@@ -12,8 +12,6 @@ from src.seg2map.roi import ROI
 from src.seg2map import exceptions
 from src.seg2map import exception_handler
 from src.seg2map import downloads
-from src.seg2map import new_download_codes
-from src.seg2map import refactor_downloads
 
 import geopandas as gpd
 import tqdm
@@ -38,11 +36,11 @@ class Seg2Map:
             "sitename": "",
         }
         # segmentation layers for each year
-        self.seg_layers=[]
+        self.seg_layers = []
         # original imagery layers for each year
-        self.original_layers=[]
+        self.original_layers = []
         # year that have imagery downloaded
-        self.years=[]
+        self.years = []
         # selected_set set(str): ids of the selected rois
         self.selected_set = set()
         # selected_set set(str): ids of rois selected for deletion
@@ -87,42 +85,44 @@ class Seg2Map:
 
         return self.settings
 
-
-
-    def load_session(
-        self,session_path:str
-    ) -> None:
+    def load_session(self, session_path: str) -> None:
         self.map.default_style = {"cursor": "wait"}
         for year_name in os.listdir(session_path):
-            year_path = os.path.join(session_path,year_name)
+            year_path = os.path.join(session_path, year_name)
             logger.info(f"year_path: {year_path}")
-            year_path = os.path.join(session_path,year_name)
-            if len(glob(os.path.join(year_path,"*merged_multispectral.tif*")))==0:
+            year_path = os.path.join(session_path, year_name)
+            if len(glob(os.path.join(year_path, "*merged_multispectral.tif*"))) == 0:
                 continue
-            merged_tif_path = glob(os.path.join(year_path,"*merged_multispectral.tif*"))[0]
+            merged_tif_path = glob(
+                os.path.join(year_path, "*merged_multispectral.tif*")
+            )[0]
             logger.info(f" merged_tif_path:  {merged_tif_path}")
             self.years.append(year_name)
-            
+
             # load original imagery on map
-            model_settings_path = os.path.join(year_path,"model_settings.json")
+            model_settings_path = os.path.join(year_path, "model_settings.json")
             model_settings = common.read_json_file(model_settings_path)
-            roi_directory = model_settings['sample_direc']
-            original_jpg_path = os.path.join(roi_directory,'merged_multispectral.jpg')
-            original_tif_path = os.path.join(roi_directory,'merged_multispectral.tif')
+            roi_directory = model_settings["sample_direc"]
+            original_jpg_path = os.path.join(roi_directory, "merged_multispectral.jpg")
+            original_tif_path = os.path.join(roi_directory, "merged_multispectral.tif")
             logger.info(f"original_jpg_path: {original_jpg_path}")
             logger.info(f"original_tif_path: {original_tif_path}")
-            layer_name=f"{os.path.basename(merged_tif_path).replace('.tif','')}_{year_name}"
+            layer_name = (
+                f"{os.path.basename(merged_tif_path).replace('.tif','')}_{year_name}"
+            )
             logger.info(f"layer_name: {layer_name}")
-            new_layer = common.get_image_overlay(original_tif_path,original_jpg_path,layer_name)
+            new_layer = common.get_image_overlay(
+                original_tif_path, original_jpg_path, layer_name
+            )
             self.original_layers.append(new_layer)
-            
+
             # load segmentation on map
             logger.info(f" merged_tif_path:  {merged_tif_path}")
-            jpg_path = glob(os.path.join(year_path,"*merged_multispectral.jp*g*"))[0]
+            jpg_path = glob(os.path.join(year_path, "*merged_multispectral.jp*g*"))[0]
             logger.info(f" jpg_path:  {jpg_path}")
-            layer_name=f"{os.path.basename(merged_tif_path).replace('.tif','')}_segmentation_{year_name}"
+            layer_name = f"{os.path.basename(merged_tif_path).replace('.tif','')}_segmentation_{year_name}"
             logger.info(f"layer_name: {layer_name}")
-            new_layer = common.get_image_overlay(merged_tif_path,jpg_path,layer_name)
+            new_layer = common.get_image_overlay(merged_tif_path, jpg_path, layer_name)
             self.seg_layers.append(new_layer)
 
         # display first year by default
@@ -170,14 +170,14 @@ class Seg2Map:
         roi_paths = []
         with common.Timer():
             for roi_id in selected_ids:
-                roi_path = new_download_codes.create_ROI_directories(
+                roi_path = downloads.create_ROI_directories(
                     site_path, roi_id, settings["dates"]
                 )
                 roi_paths.append(roi_path)
 
         with common.Timer():
-            ROI_tiles = new_download_codes.run_async_function(
-                new_download_codes.get_tiles_for_ids,
+            ROI_tiles = downloads.run_async_function(
+                downloads.get_tiles_for_ids,
                 roi_paths=roi_paths,
                 rois_gdf=self.rois.gdf,
                 selected_ids=selected_ids,
@@ -186,14 +186,12 @@ class Seg2Map:
 
         logger.info(f"ROI_tiles: {ROI_tiles}")
         with common.Timer():
-            new_download_codes.run_async_function(
-                new_download_codes.download_ROIs, ROI_tiles=ROI_tiles
-            )
+            downloads.run_async_function(downloads.download_ROIs, ROI_tiles=ROI_tiles)
+
+        self.save_config()
 
         # create merged multispectural for each year in each ROI
         common.create_merged_multispectural_for_ROIs(roi_paths)
-        self.save_config()
-
 
         # # create multispectral tif for each year only if multiband imagery was downloaded
 
@@ -214,7 +212,6 @@ class Seg2Map:
         #         ):
         #             dir_path = os.path.join(multiband_path, dir_name)
         #             common.merge_tifs(multiband_path=dir_path, roi_path=dir_path)
-
 
     def create_delete_box(self, title: str = None, msg: str = None):
         padding = "0px 0px 0px 5px"  # upper, right, bottom, left
@@ -314,7 +311,6 @@ class Seg2Map:
         )
         self.accordion.set_title(0, "ROI Data")
         return WidgetControl(widget=self.accordion, position="topright")
-
 
     def load_configs(self, filepath: str) -> None:
         """Loads features from geojson config file onto map and loads
