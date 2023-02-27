@@ -390,6 +390,8 @@ class Seg2Map:
         roi_gdf.drop(columns_to_drop, axis=1, inplace=True)
         logger.info(f"roi_gdf: {roi_gdf}")
 
+        bounds = roi_gdf.total_bounds
+        self.map.zoom_to_bounds(bounds)
         # Add geodataframe from config file to ROI
         self.rois.add_geodataframe(roi_gdf)
         self.load_feature_on_map()
@@ -780,6 +782,8 @@ class Seg2Map:
             gdf = common.read_gpd_file(file)
             exception_handler.check_if_gdf_empty(gdf, "roi")
             self.rois.add_geodataframe(gdf)
+            bounds = gdf.total_bounds
+            self.map.zoom_to_bounds(bounds)
 
         new_feature = self.rois
         on_hover = self.update_roi_html
