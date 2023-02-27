@@ -102,6 +102,8 @@ async def download_group(session, group, semaphore):
     logger.info(f"Files downloaded to {group[0]['filepath']}")
     common.unzip_dir(group[0]["filepath"])
     common.delete_empty_dirs(group[0]["filepath"])
+    # delete duplicate tifs. keep tif with most non-black pixels
+    common.delete_tifs_at_same_location(group[0]["filepath"])
 
 
 # Download the information for each year
@@ -828,45 +830,3 @@ def run_magic_function_to_download(ROI_tiles: List[dict], download_bands: str) -
     loop = asyncio.get_running_loop()
     loop.run_until_complete(async_download_ROIs(ROI_tiles, download_bands))
 
-
-import tqdm
-import tqdm.auto
-import tqdm.asyncio
-import asyncio
-
-
-async def super_sub_coroutine(delay):
-    print(f"Starting super_sub_coroutine with delay {delay}...")
-    await asyncio.sleep(delay)
-    print(f"super_sub_coroutine with delay {delay} is done!")
-    return delay
-
-
-async def sub_coroutine(delay):
-    await asyncio.sleep(delay)
-    print(f"Starting sub_coroutine with delay {delay}...")
-    coroutines = [super_sub_coroutine(i) for i in [10, 15]]
-    await asyncio.gather(*coroutines)
-    print(f"Csub_coroutine with delay {delay} is done!")
-    return delay
-
-
-async def my_coroutine(delay):
-    print(f"Starting coroutine with delay {delay}...")
-    coroutines = [sub_coroutine(i) for i in [9, 13, 16]]
-    await tqdm.asyncio.tqdm.gather(
-        *coroutines, position=0, desc=f"Downloading subroutines"
-    )
-    print(f"Coroutine with delay {delay} is done!")
-    return delay
-
-
-async def main():
-    # create a list of coroutines with different delays
-    coroutines = [my_coroutine(i) for i in [4, 3, 2]]
-
-    # schedule the coroutines and wait for them to complete
-    results = await asyncio.gather(*coroutines)
-    # results = await asyncio.gather(*coroutines)
-
-    print(f"All coroutines are done, results: {results}")

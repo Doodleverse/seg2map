@@ -21,6 +21,7 @@ from datetime import datetime
 from src.seg2map import exception_handler
 
 from tqdm.auto import tqdm
+import imageio
 import requests
 import zipfile
 from area import area
@@ -38,13 +39,50 @@ from ipywidgets import HBox
 from ipywidgets import VBox
 from ipywidgets import Layout
 from ipywidgets import HTML
+from ipyfilechooser import FileChooser
 
 
 logger = logging.getLogger(__name__)
 
 
 import time
+from base64 import b64encode
+from PIL import Image, ImageSequence
+from io import BytesIO
+import rasterio
+from ipyleaflet import ImageOverlay
 
+def get_rgb_img(img_path:str)->str:    
+    #Convert image to an RGB
+    if img_path.endswith('.jpg'):
+        im=Image.open(img_path,formats=('JPEG',)).convert('RGB')
+        out_path = img_path.replace(".jpg","RGB_.jpg")
+    elif img_path.endswith('.png'):
+        im=Image.open(img_path,formats=('PNG',)).convert('RGB')
+        out_path = img_path.replace(".png","RGB_.png")
+    im.save(out_path)
+    return out_path
+
+
+def get_bounds(tif_path):
+    dataset = rasterio.open(tif_path)
+    b = dataset.bounds
+    bounds = [(b.bottom, b.left), (b.top, b.right)]
+    return bounds
+
+
+def get_image_overlay(tif_path, jpg_path,layer_name:str):
+    bounds= get_bounds(tif_path)
+    RGB_path = get_rgb_img(jpg_path)
+    image = Image.open(RGB_path)
+    f = BytesIO()
+    image.save(f,"JPEG")
+
+    data = b64encode(f.getvalue())
+    data = data.decode("ascii")
+    url = "data:image/JPEG;base64," + data
+    image_overlay = ImageOverlay(url=url, bounds=bounds, name=layer_name)
+    return image_overlay
 
 class Timer:
     def __enter__(self):
@@ -55,6 +93,109 @@ class Timer:
         self.end = time.perf_counter()
         self.interval = self.end - self.start
         print(f"Elapsed time: {self.interval:.6f} seconds")
+
+
+def create_dir_chooser(callback, title: str = None, starting_directory: str = "data"):
+    padding = "0px 0px 0px 5px"  # upper, right, bottom, left
+    inital_path = os.path.join(os.getcwd(), starting_directory)
+    if not os.path.exists(inital_path):
+        inital_path = os.getcwd()
+    # creates a unique instance of filechooser and button to close filechooser
+    dir_chooser = FileChooser(inital_path)
+    dir_chooser.dir_icon = os.sep
+    # Switch to folder-only mode
+    dir_chooser.show_only_dirs = True
+    if title is not None:
+        dir_chooser.title = f"<b>{title}</b>"
+    dir_chooser.register_callback(callback)
+
+    close_button = ToggleButton(
+        value=False,
+        tooltip="Close Directory Chooser",
+        icon="times",
+        button_style="primary",
+        layout=Layout(height="28px", width="28px", padding=padding),
+    )
+
+    def close_click(change):
+        if change["new"]:
+            dir_chooser.close()
+            close_button.close()
+
+    close_button.observe(close_click, "value")
+    chooser = HBox([dir_chooser, close_button])
+    return chooser
+
+def group_tif_locations(dir_path):
+    """
+    Groups GeoTIFF files at the same location in a directory by their georeferencing information.
+
+    Args:
+        dir_path: str - The file path to the directory containing GeoTIFF files.
+
+    Returns:
+        list - A list of groups of file paths to GeoTIFF files that are at the same location.
+
+    Example:
+        groups = group_tif_locations("path/to/tif_directory")
+        # Returns a list of groups of file paths to GeoTIFF files that are at the same location.
+    """
+    tif_files = [os.path.join(dir_path, f) for f in os.listdir(dir_path) if f.endswith('.tif') or f.endswith('.tiff')]
+    
+    tif_groups = {}
+    
+    for tif_file in tif_files:
+        dataset = gdal.Open(tif_file, gdal.GA_ReadOnly)
+        geo_transform = dataset.GetGeoTransform()
+        x_min, x_size, _, y_max, _, y_size = geo_transform
+
+        found_group = False
+        for group_key in tif_groups.keys():
+            if (x_min, x_size, y_max, y_size) == group_key:
+                tif_groups[group_key].append(tif_file)
+                found_group = True
+                break
+        
+        if not found_group:
+            tif_groups[(x_min, x_size, y_max, y_size)] = [tif_file]
+    
+    return list(tif_groups.values())
+
+def delete_tifs_at_same_location(path):
+    multiple_tifs_same_location = [tifs for tifs in group_tif_locations(path) if len(tifs)>1]
+    delete_tifs_with_black_pixels(multiple_tifs_same_location)
+
+def delete_tifs_except(tif_paths, keep_tif_path):
+    for tif_path in tif_paths:
+        if tif_path != keep_tif_path:
+            os.remove(tif_path)
+
+def delete_tifs_with_black_pixels(tif_groups):
+    # only keep tifs where ratio of non-black pixels to total pixels is the highest
+    for tif_paths in tif_groups:
+        max_tif_path = max(tif_paths, key=get_pixel_ratio)
+        delete_tifs_except(tif_paths, max_tif_path)
+
+
+def get_pixel_ratio(tif_path):
+    """
+    Calculates the ratio of non-black pixels to total pixels in a GeoTIFF file.
+
+    Args:
+        tif_path: str - The file path to the GeoTIFF file.
+
+    Returns:
+        float - The ratio of non-black pixels to total pixels in the GeoTIFF file.
+
+    Example:
+        ratio = get_pixel_ratio("path/to/tif_file.tif")
+        # Returns a float representing the ratio of non-black pixels to total pixels in the GeoTIFF file.
+    """
+    img = imageio.imread(tif_path)
+    total_pixels = (img >= 0).sum()
+    non_black_pixels = (img > 0).sum()
+    pixel_ratio = non_black_pixels/total_pixels
+    return pixel_ratio
 
 
 def group_files(files: List[str], size: int = 2) -> List[List[str]]:
@@ -73,6 +214,48 @@ def group_files(files: List[str], size: int = 2) -> List[List[str]]:
     grouped_files = [files[n : n + size] for n in range(0, len(files), size)]
     return grouped_files
 
+def create_merged_multispectural_for_ROIs(roi_paths):
+    for roi_path in roi_paths:
+        year_dirs = get_matching_dirs(roi_path, pattern=r"^\d{4}$")
+        for year_path in year_dirs:
+            glob_str = os.path.join(year_path,"*merged_multispectral.jpg")
+            if len(glob(glob_str))>=1:
+                continue
+            if len(os.listdir(year_path))==0:
+                continue
+            get_merged_multispectural(year_path)
+
+def get_merged_multispectural(src_path: str) -> str:
+    """
+    Merges multiple GeoTIFF files into a single VRT file and returns the path of the merged file.
+
+    This function looks for all GeoTIFF files in the specified directory, except for any files that contain the string "merged_multispectral" in their name. It groups the remaining files into batches of 4, and merges each batch into a separate VRT file. Finally, it merges all the VRT files into a single VRT file and returns the path of the merged file.
+
+    Parameters:
+    - src_path (str): The path of the directory containing the GeoTIFF files.
+
+    Returns:
+    - The path of the merged VRT file.
+    """
+    tif_files = glob(os.path.join(src_path, "*.tif"))
+    tif_files = [file for file in tif_files if "merged_multispectral" not in file]
+    logger.info(f"Found {len(tif_files)} GeoTIFF files in {src_path}")
+    logger.info(f"tif_files: {tif_files}")
+    merged_files = []
+    for idx, files in enumerate(group_files(tif_files, 4)):
+        filename = f"merged_multispectral_{idx}.vrt"
+        dst_path = os.path.join(src_path, filename)
+        merged_tif = merge_files(files, dst_path, create_jpg=False)
+        merged_files.append(merged_tif)
+
+    logger.info(f"merged_files {merged_files}")
+    dst_path = os.path.join(src_path, "merged_multispectral.vrt")
+    merged_file = merge_files(merged_files, dst_path)
+    # delete intermediate merged tifs and vrts
+    pattern = ".*merged_multispectral_\d+.*"
+    deleted_files = delete_files(pattern, src_path)
+    logger.info(f"deleted_files {deleted_files}")
+    return merged_file
 
 def merge_files(src_files: str, dest_path: str, create_jpg: bool = True) -> str:
     """Merge a list of GeoTIFF files into a single JPEG file.
@@ -582,23 +765,6 @@ def delete_empty_dirs(dir_path: str):
         os.removedirs(remove_dir)
 
 
-def get_rgb_img(img_path):
-    # Convert the jpg to an RGB
-    img_path = r"C:\1_USGS\4_seg2map\seg2map\multiband0_USDA_NAIP_DOQQ_m_4012407_se_10_1_20100612.jpg"
-    img_path = os.path.abspath(img_path)
-    im = Image.open(img_path, formats=("JPEG",)).convert("RGB")
-    out_path = img_path.replace(".jpg", "RGB_.jpg")
-    im.save(out_path)
-    return out_path
-
-
-def get_bounds(tif_path):
-    dataset = rasterio.open(tif_path)
-    b = dataset.bounds
-    bounds = [(b.bottom, b.left), (b.top, b.right)]
-    return bounds
-
-
 def create_year_directories(start_year: int, end_year: int, base_path: str) -> None:
     """Create directories for each year in between a given start and end year.
 
@@ -816,7 +982,7 @@ def get_ids_with_invalid_area(
         raise TypeError("Must be geodataframe")
 
 
-def find_config_json(search_path: str) -> str:
+def find_config_json(search_path: str,search_pattern:str="") -> str:
     """Searches for a `config.json` file in the specified directory
 
     Args:
@@ -829,7 +995,9 @@ def find_config_json(search_path: str) -> str:
         FileNotFoundError: if a `config.json` file is not found in the specified directory
     """
     logger.info(f"searching directory for config.json: {search_path}")
-    config_regex = re.compile(r"config.*\.json", re.IGNORECASE)
+    if search_pattern != "":
+        search_pattern =r"config.*\.json"
+    config_regex = re.compile(search_pattern, re.IGNORECASE)
 
     for file in os.listdir(search_path):
         if config_regex.match(file):

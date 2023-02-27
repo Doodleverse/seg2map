@@ -1,6 +1,7 @@
 import os
 import re
 import glob
+import shutil
 import asyncio
 import platform
 import json
@@ -44,6 +45,7 @@ def get_merged_multispectural(src_path: str) -> str:
     Returns:
     - The path of the merged VRT file.
     """
+    year_name = os.path.basename(src_path)
     tif_files = glob(os.path.join(src_path, "*.tif"))
     tif_files = [file for file in tif_files if "merged_multispectral" not in file]
     logger.info(f"Found {len(tif_files)} GeoTIFF files in {src_path}")
@@ -56,7 +58,7 @@ def get_merged_multispectural(src_path: str) -> str:
         merged_files.append(merged_tif)
 
     logger.info(f"merged_files {merged_files}")
-    dst_path = os.path.join(src_path, " merged_multispectral.vrt")
+    dst_path = os.path.join(src_path, "merged_multispectral.vrt")
     merged_file = common.merge_files(merged_files, dst_path)
     # delete intermediate merged tifs and vrts
     pattern = ".*merged_multispectral_\d+.*"
@@ -550,6 +552,12 @@ class Zoo_Model:
 
         session_path = common.create_directory(os.getcwd(), "sessions")
         session_dir = common.create_directory(session_path, session_name)
+
+        search_pattern =r"config_gdf.*\.geojson"
+
+        config_gdf_path = common.find_config_json(os.path.dirname(src_directory),search_pattern)
+        config_json_path = common.find_config_json(os.path.dirname(src_directory))
+
         year_dirs = common.get_matching_dirs(src_directory, pattern=r"^\d{4}$")
 
         # create jpgs for all tifs that don't have one
@@ -580,6 +588,7 @@ class Zoo_Model:
                 use_tta,
                 use_otsu,
             )
+
 
         for year_dir in tqdm.auto.tqdm(
             year_dirs, desc="Creating tifs", leave=False, unit_scale=True
@@ -616,6 +625,15 @@ class Zoo_Model:
             # create orthomoasic
             merged_multispectural = get_merged_multispectural(session_year_path)
             logger.info(f"merged_multispectural: {merged_multispectural}")
+
+            # copy config files to session directory
+            dst_file = os.path.join(session_year_path,"config_gdf.geojson")
+            logger.info(f"dst_config_gdf: {dst_file}")
+            shutil.copy(config_gdf_path,dst_file)
+            dst_file = os.path.join(session_year_path,"config.json")
+            logger.info(f"dst_config.json: {dst_file}")
+            shutil.copy(config_json_path,dst_file)
+
 
     def compute_segmentation(
         self,

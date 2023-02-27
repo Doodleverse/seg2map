@@ -63,7 +63,6 @@ class UI_Models:
     # all instances of UI will share the same debug_view
     model_view = Output()
     run_model_view = Output()
-    # FloodNet
     # uav_RGB_10class_7566797: https://zenodo.org/record/7566797
     # uav_RGB_10class_7566810: https://zenodo.org/record/7566810
     # CoastTrain
@@ -87,7 +86,7 @@ class UI_Models:
             "sample_direc": None,
             "use_GPU": "0",
             "implementation": "BEST",
-            "model_type": "FloodNet_RGB_10class_7566797",
+            "model_type": "OpenEarthNet_RGB_9class_7576894",
             "otsu": False,
             "tta": False,
         }
@@ -97,8 +96,6 @@ class UI_Models:
             "DeepGlobe_RGB_7class_7576898",
             "EnviroAtlas_RGB_6class_7576909",
             "AAAI-Buildings_RGB_2class_7607895",
-            "FloodNet_RGB_10class_7566797",
-            "FloodNet_RGB_10class_7566810",
         ]
         # list of RGB  models available
         self.coastal_landcover_models = [
@@ -106,8 +103,6 @@ class UI_Models:
             "CoastTrain_RGB_5class_7566992",
             "CoastTrain_RGB_8class_7570583",
             "Chesappeake_RGB_7class_7576904",
-            "NOAA_RGB_4_class_7628733",
-            "NOAA_RGB_4_class_7628733",
         ]  # @todo add barrier islands model when its up
 
         self.session_name = ""
@@ -399,16 +394,17 @@ class UI_Models:
     def load_callback(self, filechooser: FileChooser) -> None:
         if filechooser.selected:
             inputs_directory = os.path.abspath(filechooser.selected)
-            for root, dirs, files in os.walk(inputs_directory):
-                # if any directory contains jpgs then set inputs directory to selected directory
-                jpgs = glob.glob(os.path.join(root, "*jpg"))
-                if len(jpgs) > 0:
-                    self.set_inputs_directory(inputs_directory)
-                    return
-            self.launch_error_box(
-                "File Not Found",
-                "The directory contains no jpgs! Please select a directory with jpgs.",
-            )
+            self.set_inputs_directory(inputs_directory)
+            # for root, dirs, files in os.walk(inputs_directory):
+            #     # if any directory contains jpgs then set inputs directory to selected directory
+            #     jpgs = glob.glob(os.path.join(root, "*jpg"))
+            #     if len(jpgs) > 0:
+            #         self.set_inputs_directory(inputs_directory)
+            #         return
+            # self.launch_error_box(
+            #     "File Not Found",
+            #     "The directory contains no jpgs! Please select a directory with jpgs.",
+            # )
 
     @model_view.capture(clear_output=True)
     def use_select_images_button_clicked(self, button):

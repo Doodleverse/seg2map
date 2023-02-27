@@ -1,4 +1,5 @@
 import os
+from glob import glob
 import json
 import logging
 from typing import List
@@ -36,6 +37,12 @@ class Seg2Map:
             "dates": "",
             "sitename": "",
         }
+        # segmentation layers for each year
+        self.seg_layers=[]
+        # original imagery layers for each year
+        self.original_layers=[]
+        # year that have imagery downloaded
+        self.years=[]
         # selected_set set(str): ids of the selected rois
         self.selected_set = set()
         # selected_set set(str): ids of rois selected for deletion
@@ -79,6 +86,49 @@ class Seg2Map:
                 raise Exception("Dates are not correct chronological order")
 
         return self.settings
+
+
+
+    def load_session(
+        self,session_path:str
+    ) -> None:
+        self.map.default_style = {"cursor": "wait"}
+        for year_name in os.listdir(session_path):
+            year_path = os.path.join(session_path,year_name)
+            logger.info(f"year_path: {year_path}")
+            year_path = os.path.join(session_path,year_name)
+            if len(glob(os.path.join(year_path,"*merged_multispectral.tif*")))==0:
+                continue
+            merged_tif_path = glob(os.path.join(year_path,"*merged_multispectral.tif*"))[0]
+            logger.info(f" merged_tif_path:  {merged_tif_path}")
+            self.years.append(year_name)
+            
+            # load original imagery on map
+            model_settings_path = os.path.join(year_path,"model_settings.json")
+            model_settings = common.read_json_file(model_settings_path)
+            roi_directory = model_settings['sample_direc']
+            original_jpg_path = os.path.join(roi_directory,'merged_multispectral.jpg')
+            original_tif_path = os.path.join(roi_directory,'merged_multispectral.tif')
+            logger.info(f"original_jpg_path: {original_jpg_path}")
+            logger.info(f"original_tif_path: {original_tif_path}")
+            layer_name=f"{os.path.basename(merged_tif_path).replace('.tif','')}_{year_name}"
+            logger.info(f"layer_name: {layer_name}")
+            new_layer = common.get_image_overlay(original_tif_path,original_jpg_path,layer_name)
+            self.original_layers.append(new_layer)
+            
+            # load segmentation on map
+            logger.info(f" merged_tif_path:  {merged_tif_path}")
+            jpg_path = glob(os.path.join(year_path,"*merged_multispectral.jp*g*"))[0]
+            logger.info(f" jpg_path:  {jpg_path}")
+            layer_name=f"{os.path.basename(merged_tif_path).replace('.tif','')}_segmentation_{year_name}"
+            logger.info(f"layer_name: {layer_name}")
+            new_layer = common.get_image_overlay(merged_tif_path,jpg_path,layer_name)
+            self.seg_layers.append(new_layer)
+
+        # display first year by default
+        self.map.add(self.original_layers[0])
+        self.map.add(self.seg_layers[0])
+        self.map.default_style = {"cursor": "default"}
 
     def download_imagery(
         self,
@@ -140,14 +190,10 @@ class Seg2Map:
                 new_download_codes.download_ROIs, ROI_tiles=ROI_tiles
             )
 
-        # unzip and delete any empty directories
-        # for dir_name in os.listdir(site_path):
-        #     roi_path = os.path.join(site_path, dir_name)
-        #     multiband_path = os.path.join(roi_path, "multiband")
-        #     # Download tiles and unzip data
-        #     common.unzip_data(roi_path)
-        #     # delete any directories that were empty
-        #     common.delete_empty_dirs(multiband_path)
+        # create merged multispectural for each year in each ROI
+        common.create_merged_multispectural_for_ROIs(roi_paths)
+        self.save_config()
+
 
         # # create multispectral tif for each year only if multiband imagery was downloaded
 
@@ -169,10 +215,6 @@ class Seg2Map:
         #             dir_path = os.path.join(multiband_path, dir_name)
         #             common.merge_tifs(multiband_path=dir_path, roi_path=dir_path)
 
-        # # delete empty directories
-        # common.delete_empty_dirs(site_path)
-        # self.save_config()
-        # logger.info("Done downloading")
 
     def create_delete_box(self, title: str = None, msg: str = None):
         padding = "0px 0px 0px 5px"  # upper, right, bottom, left
@@ -272,6 +314,7 @@ class Seg2Map:
         )
         self.accordion.set_title(0, "ROI Data")
         return WidgetControl(widget=self.accordion, position="topright")
+
 
     def load_configs(self, filepath: str) -> None:
         """Loads features from geojson config file onto map and loads
