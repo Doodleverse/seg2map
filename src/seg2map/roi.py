@@ -23,7 +23,7 @@ class ROI:
     A Bounding Box drawn by user.
     """
 
-    MAX_AREA = 3000000000  # UNITS = Sq. Meters
+    MAX_AREA = 100000000  # UNITS = Sq. Meters
     MIN_AREA = 10  # UNITS = Sq. Meters
     LAYER_NAME = "ROI"
 
@@ -34,14 +34,6 @@ class ROI:
         self.settings = {}
         # self.settings={"sitename":"","filepath":"","ids":[],"dates":""}
         self.filename = "roi.geojson"
-        # self.ids=[]
-
-    # @lru_cache()
-    # def get_ids(self)->list:
-    #     if self.gdf.empty or "id" not in self.gdf.columns:
-    #         return []
-    #     ids = list(self.gdf['id']).copy()
-    #     return ids
 
     @lru_cache()
     def get_ids(self) -> list:
@@ -137,6 +129,8 @@ class ROI:
             new_gdf.drop(index=drop_ids, axis=0, inplace=True)
         # convert crs of ROIs to the map crs
         new_gdf.to_crs(crs)
+        new_gdf.index = new_gdf["id"]
+        new_gdf.index = new_gdf.index.rename("ROI_ID")
         # add new_gdf to self.gdf
         self.gdf = self.add_new(new_gdf)
         logger.info(f"self.gdf: {self.gdf}")

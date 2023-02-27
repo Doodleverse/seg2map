@@ -1,4 +1,5 @@
 import os
+from glob import glob
 import json
 import logging
 from typing import List
@@ -13,6 +14,8 @@ from src.seg2map import exception_handler
 from src.seg2map import downloads
 
 import geopandas as gpd
+import tqdm
+import tqdm.auto
 from ipyleaflet import DrawControl, LayersControl, WidgetControl, GeoJSON
 from leafmap import Map
 from ipywidgets import Layout, HTML, Accordion
@@ -32,6 +35,12 @@ class Seg2Map:
             "dates": "",
             "sitename": "",
         }
+        # segmentation layers for each year
+        self.seg_layers = []
+        # original imagery layers for each year
+        self.original_layers = []
+        # year that have imagery downloaded
+        self.years = []
         # selected_set set(str): ids of the selected rois
         self.selected_set = set()
         # selected_set set(str): ids of rois selected for deletion
@@ -76,6 +85,51 @@ class Seg2Map:
 
         return self.settings
 
+    def load_session(self, session_path: str) -> None:
+        self.map.default_style = {"cursor": "wait"}
+        for year_name in os.listdir(session_path):
+            year_path = os.path.join(session_path, year_name)
+            logger.info(f"year_path: {year_path}")
+            year_path = os.path.join(session_path, year_name)
+            if len(glob(os.path.join(year_path, "*merged_multispectral.tif*"))) == 0:
+                continue
+            merged_tif_path = glob(
+                os.path.join(year_path, "*merged_multispectral.tif*")
+            )[0]
+            logger.info(f" merged_tif_path:  {merged_tif_path}")
+            self.years.append(year_name)
+
+            # load original imagery on map
+            model_settings_path = os.path.join(year_path, "model_settings.json")
+            model_settings = common.read_json_file(model_settings_path)
+            roi_directory = model_settings["sample_direc"]
+            original_jpg_path = os.path.join(roi_directory, "merged_multispectral.jpg")
+            original_tif_path = os.path.join(roi_directory, "merged_multispectral.tif")
+            logger.info(f"original_jpg_path: {original_jpg_path}")
+            logger.info(f"original_tif_path: {original_tif_path}")
+            layer_name = (
+                f"{os.path.basename(merged_tif_path).replace('.tif','')}_{year_name}"
+            )
+            logger.info(f"layer_name: {layer_name}")
+            new_layer = common.get_image_overlay(
+                original_tif_path, original_jpg_path, layer_name
+            )
+            self.original_layers.append(new_layer)
+
+            # load segmentation on map
+            logger.info(f" merged_tif_path:  {merged_tif_path}")
+            jpg_path = glob(os.path.join(year_path, "*merged_multispectral.jp*g*"))[0]
+            logger.info(f" jpg_path:  {jpg_path}")
+            layer_name = f"{os.path.basename(merged_tif_path).replace('.tif','')}_segmentation_{year_name}"
+            logger.info(f"layer_name: {layer_name}")
+            new_layer = common.get_image_overlay(merged_tif_path, jpg_path, layer_name)
+            self.seg_layers.append(new_layer)
+
+        # display first year by default
+        self.map.add(self.original_layers[0])
+        self.map.add(self.seg_layers[0])
+        self.map.default_style = {"cursor": "default"}
+
     def download_imagery(
         self,
     ) -> None:
@@ -111,13 +165,53 @@ class Seg2Map:
         download_bands = settings["download_bands"]
         # download all selected ROIs on map to sitename directory
         print("Download in process")
-        downloads.run_async_download(
-            site_path, self.rois.gdf, selected_ids, settings["dates"], download_bands
-        )
-        # delete empty directories
-        common.delete_empty_dirs(site_path)
+
+        # refactor_downloads.prepare_ROI_for_download()
+        roi_paths = []
+        with common.Timer():
+            for roi_id in selected_ids:
+                roi_path = downloads.create_ROI_directories(
+                    site_path, roi_id, settings["dates"]
+                )
+                roi_paths.append(roi_path)
+
+        with common.Timer():
+            ROI_tiles = downloads.run_async_function(
+                downloads.get_tiles_for_ids,
+                roi_paths=roi_paths,
+                rois_gdf=self.rois.gdf,
+                selected_ids=selected_ids,
+                dates=settings["dates"],
+            )
+
+        logger.info(f"ROI_tiles: {ROI_tiles}")
+        with common.Timer():
+            downloads.run_async_function(downloads.download_ROIs, ROI_tiles=ROI_tiles)
+
         self.save_config()
-        logger.info("Done downloading")
+
+        # create merged multispectural for each year in each ROI
+        common.create_merged_multispectural_for_ROIs(roi_paths)
+
+        # # create multispectral tif for each year only if multiband imagery was downloaded
+
+        # if download_bands != "singleband":
+        #     for dir_name in tqdm.auto.tqdm(
+        #         os.listdir(site_path),
+        #         desc="Merging tifs for all ROI",
+        #         leave=False,
+        #         unit_scale=True,
+        #     ):
+        #         roi_path = os.path.join(site_path, dir_name)
+        #         multiband_path = os.path.join(roi_path, "multiband")
+        #         for dir_name in tqdm.auto.tqdm(
+        #             os.listdir(multiband_path),
+        #             desc="Merging tifs per year",
+        #             leave=False,
+        #             unit_scale=True,
+        #         ):
+        #             dir_path = os.path.join(multiband_path, dir_name)
+        #             common.merge_tifs(multiband_path=dir_path, roi_path=dir_path)
 
     def create_delete_box(self, title: str = None, msg: str = None):
         padding = "0px 0px 0px 5px"  # upper, right, bottom, left
@@ -225,28 +319,21 @@ class Seg2Map:
         Args:
             filepath (str): full path to config.geojson file
         """
-        # path to directory to search for config_gdf.json file
-        search_path = os.path.dirname(os.path.realpath(filepath))
-        # create path to config.json file in search_path directory
-        config_path = common.find_config_json(search_path)
-        # check if ids in geojson file already exist on map
-        json_data = common.read_json_file(config_path)
-
-        # # add new ids to self.ids and throw an error if any ids already exist in self.ids
-        # new_ids = json_data["roi_ids"]
-        # logger.info(f"json_data['roi_ids'] {json_data['roi_ids']}")
-        # self.add_to_roi_ids(new_ids)
-
         # load geodataframe from config and load features onto map
         self.load_gdf_config(filepath)
 
         # path to directory to search for config_gdf.json file
         search_path = os.path.dirname(os.path.realpath(filepath))
-        # create path to config.json file in search_path directory
-        config_path = common.find_config_json(search_path)
-        logger.info(f"Loaded json config file from {config_path}")
-        # load settings from config.json file
-        self.load_json_config(config_path)
+        try:
+            # create path to config.json file in search_path directory
+            config_path = common.find_config_json(search_path)
+            logger.info(f"Loaded json config file from {config_path}")
+            # load settings from config.json file
+            self.load_json_config(config_path)
+        except FileNotFoundError as file_error:
+            print(file_error)
+            print("No settings loaded in from config file")
+            logger.warning(f"No settings loaded in from config file. {file_error}")
 
     def load_gdf_config(self, filepath: str) -> None:
         """Load features from geodataframe located in geojson file
@@ -293,7 +380,7 @@ class Seg2Map:
         exception_handler.check_if_None(self.rois)
         json_data = common.read_json_file(filepath)
         # replace settings with settings from config file
-        self.save_settings(json_data["settings"])
+        self.save_settings(**json_data["settings"])
 
         # replace roi_settings for each ROI with contents of config.json
         new_roi_settings = {

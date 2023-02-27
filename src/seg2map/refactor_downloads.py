@@ -1,218 +1,3 @@
-import os
-import time
-import json
-import math
-from typing import List
-import platform
-import logging
-import os, json, shutil
-from glob import glob
-import concurrent.futures
-from datetime import datetime
-
-from src.seg2map import exceptions
-from src.seg2map import common
-
-import asyncio
-import nest_asyncio
-import aiohttp
-import tqdm
-import tqdm.auto
-import tqdm.asyncio
-import ee
-
-
-logger = logging.getLogger(__name__)
-
-
-async def download_file(session, url, save_location):
-    retries = 3  # number of times to retry download
-    for i in range(retries):
-        try:
-            async with session.get(url) as response:
-                if response.status != 200:
-                    print(f"An error occurred while downloading.{response}")
-                    logger.error(f"An error occurred while downloading.{response}")
-                    print(response.status)
-                    return
-                with open(save_location, "wb") as f:
-                    async for chunk in response.content.iter_chunked(1024):
-                        if not chunk:
-                            break
-                        f.write(chunk)
-                break  # break out of retry loop if download is successful
-        except asyncio.exceptions.TimeoutError as e:
-            logger.error(e)
-            logger.error(f"An error occurred while downloading {save_location}.{e}")
-            print(
-                f"Timeout error occurred for {url}. Retrying with new session in 1 second... ({i + 1}/{retries})"
-            )
-            await asyncio.sleep(1)
-            async with aiohttp.ClientSession() as new_session:
-                return await download_file(new_session, url, save_location)
-        except Exception as e:
-            logger.error(e)
-            logger.error(
-                f"Download failed for {save_location} {url}. Retrying in 1 second... ({i + 1}/{retries})"
-            )
-            print(
-                f"Download failed for {url}. Retrying in 1 second... ({i + 1}/{retries})"
-            )
-            await asyncio.sleep(1)
-    else:
-        logger.error(f"Download failed for {save_location} {url}.")
-        print(f"Download failed for {url}.")
-        return
-
-
-async def download_group(session, group, semaphore):
-    coroutines = []
-    logger.info(f"group: {group}")
-    for tile_number, tile in enumerate(group):
-        polygon = tile["polygon"]
-        filepath = os.path.abspath(tile["filepath"])
-        filenames = {
-            "multiband": "multiband" + str(tile_number),
-            "singleband": os.path.basename(filepath),
-        }
-        for tile_id in tile["ids"]:
-            logger.info(f"tile_id: {tile_id}")
-            file_id = tile_id.replace("/", "_")
-            filename = filenames["multiband"] + "_" + file_id
-            save_location = os.path.join(filepath, filename.replace("/", "_") + ".zip")
-            logger.info(f"save_location: {save_location}")
-            coroutines.append(
-                async_download_tile(
-                    session,
-                    polygon,
-                    tile_id,
-                    save_location,
-                    filename,
-                    filePerBand=False,
-                    semaphore=semaphore,
-                )
-            )
-
-    year_name = os.path.basename(group[0]["filepath"])
-    await tqdm.asyncio.tqdm.gather(
-        *coroutines, leave=False, desc=f"Downloading {year_name}"
-    )
-    # await asyncio.gather(*coroutines)
-
-    logger.info(f"Files downloaded to {group[0]['filepath']}")
-    common.unzip_dir(group[0]["filepath"])
-    common.delete_empty_dirs(group[0]["filepath"])
-    # delete duplicate tifs. keep tif with most non-black pixels
-    common.delete_tifs_at_same_location(group[0]["filepath"])
-
-
-# Download the information for each year
-async def download_groups(
-    groups,
-    semaphore: asyncio.Semaphore,
-    group_id: str = "",
-    show_progress_bar: bool = False,
-):
-    coroutines = []
-    async with aiohttp.ClientSession() as session:
-        logger.info(f"group: {groups}")
-        for key, group in groups.items():
-            logger.info(f"key: {key} group: {group}")
-            if len(group) > 0:
-                coroutines.append(download_group(session, group, semaphore))
-            else:
-                print(f"No tiles available to download for year: {key}")
-                logger.warning(f"No tiles available to download for year: {key}")
-
-        if show_progress_bar == False:
-            await asyncio.gather(*coroutines)
-        elif show_progress_bar == True:
-            await tqdm.asyncio.tqdm.gather(
-                *coroutines,
-                position=1,
-                leave=False,
-                desc=f"Downloading years for ROI {group_id}",
-            )
-
-
-async def download_ROIs(ROI_tiles: dict = {}):
-    tasks = []
-    semaphore = asyncio.Semaphore(15)
-    show_progress_bar = True
-    for ROI_id, ROI_info in ROI_tiles.items():
-        tasks.append(
-            download_groups(
-                ROI_info,
-                semaphore,
-                group_id=ROI_id,
-                show_progress_bar=show_progress_bar,
-            )
-        )
-    await tqdm.asyncio.tqdm.gather(*tasks, position=0, desc=f"Downloading ROIs")
-
-
-async def async_download_tile(
-    session: aiohttp.ClientSession,
-    polygon: List[set],
-    tile_id: str,
-    filepath: str,
-    filename: str,
-    filePerBand: bool,
-    semaphore: asyncio.Semaphore,
-) -> None:
-    """
-    Download a single tile of an Earth Engine image and save it to a zip directory.
-
-    This function uses the Earth Engine API to crop the image to a specified polygon and download it to a zip directory with the specified filename. The number of concurrent downloads is limited to 10.
-
-    Parameters:
-
-    session (aiohttp.ClientSession): An instance of aiohttp session to make the download request.
-    polygon (List[set]): A list of latitude and longitude coordinates that define the region to crop the image to.
-    tile_id (str): The ID of the Earth Engine image to download.
-    filepath (str): The path of the directory to save the downloaded zip file to.
-    filename (str): The name of the zip file to be saved.
-    filePerBand (bool): Whether to save each band of the image in a separate file or as a single file.
-    semaphore:asyncio.Semaphore : Limits number of concurrent requests
-    Returns:
-    None
-    """
-    # Semaphore limits number of concurrent requests
-    async with semaphore:
-        OUT_RES_M = 0.5  # output raster spatial footprint in metres
-        image_ee = ee.Image(tile_id)
-        # crop and download
-        download_id = ee.data.getDownloadId(
-            {
-                "image": image_ee,
-                "region": polygon,
-                "scale": OUT_RES_M,
-                "crs": "EPSG:4326",
-                "filePerBand": filePerBand,
-                "name": filename,
-            }
-        )
-        try:
-            # create download url using id
-            url = ee.data.makeDownloadUrl(download_id)
-            await download_file(session, url, filepath)
-        except Exception as e:
-            logger.error(e)
-            raise e
-
-
-def run_async_function(async_callback, **kwargs) -> None:
-    if platform.system() == "Windows":
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    # apply a nested loop to jupyter's event loop for async downloading
-    nest_asyncio.apply()
-    # get nested running loop and wait for async downloads to complete
-    loop = asyncio.get_running_loop()
-    result = loop.run_until_complete(async_callback(**kwargs))
-    logger.info(f"result: {result}")
-    return result
-
-
 import json
 import math
 import logging
@@ -379,6 +164,74 @@ def create_dir(dir_path: str, raise_error=True) -> str:
     return dir_path
 
 
+async def async_download_tile(
+    session: aiohttp.ClientSession,
+    polygon: List[set],
+    tile_id: str,
+    filepath: str,
+    filename: str,
+    filePerBand: bool,
+) -> None:
+    """
+    Download a single tile of an Earth Engine image and save it to a zip directory.
+
+    This function uses the Earth Engine API to crop the image to a specified polygon and download it to a zip directory with the specified filename. The number of concurrent downloads is limited to 10.
+
+    Parameters:
+
+    session (aiohttp.ClientSession): An instance of aiohttp session to make the download request.
+    polygon (List[set]): A list of latitude and longitude coordinates that define the region to crop the image to.
+    tile_id (str): The ID of the Earth Engine image to download.
+    filepath (str): The path of the directory to save the downloaded zip file to.
+    filename (str): The name of the zip file to be saved.
+    filePerBand (bool): Whether to save each band of the image in a separate file or as a single file.
+    Returns:
+    None
+    """
+    # No more than 10 concurrent workers will be able to make
+    # get request at the same time.
+    async with limit:
+        OUT_RES_M = 0.5  # output raster spatial footprint in metres
+        image_ee = ee.Image(tile_id)
+        # crop and download
+        download_id = ee.data.getDownloadId(
+            {
+                "image": image_ee,
+                "region": polygon,
+                "scale": OUT_RES_M,
+                "crs": "EPSG:4326",
+                "filePerBand": filePerBand,
+                "name": filename,
+            }
+        )
+        try:
+            # file path to zip directory that will be downloaded
+            fp_zip = os.path.join(filepath, filename.replace("/", "_") + ".zip")
+
+            chunk_size: int = 2048
+            # create download url using id
+            url = ee.data.makeDownloadUrl(download_id)
+            # zip directory images will be downloaded to
+            async with session.get(url, raise_for_status=True) as r:
+                logger.info(f"Response: {r}")
+                if r.status != 200:
+                    print("An error occurred while downloading.{r}")
+                    logger.error("An error occurred while downloading.{r}")
+                    print(r.status)
+                    return
+                with open(fp_zip, "wb") as fd:
+                    async for chunk in r.content.iter_chunked(chunk_size):
+                        await asyncio.sleep(0)
+                        if not chunk:
+                            print(f"NOT CHUNK, R: {r}")
+                            break
+                        fd.write(chunk)
+
+        except Exception as e:
+            logger.error(e)
+            raise e
+
+
 def copy_multiband_tifs(roi_path: str, multiband_path: str):
     for folder in glob(
         roi_path + os.sep + "tile*",
@@ -522,9 +375,99 @@ async def async_download_all_tiles(tiles_info: List[dict], download_bands: str) 
     await tqdm.asyncio.tqdm.gather(*tasks, position=0, desc=f"All Downloads")
 
 
+async def async_download_tiles(tiles_info: List[dict], download_bands: str) -> None:
+    """
+        Downloads all tiles asynchronously and displays a tqdm for the download progress.
+        downloads the tiles in separate directories depending on whether single band or multiband
+        was requested
+    Args:
+        tiles_info (List[dict]): list information for each tile
+                each list entry contains a dictionary
+                {
+                    polygon (list[tuple]): coordinates of the polygon in lat/lon
+                        ex: [(1,2),(3,4)(4,3),(3,3),(1,2)]
+                    filepath (str): full path to tile directory
+                        ex: C:/users/seg2map/data/sitename/tile0
+                    ids: (list[str]): GEE ids of each file
+                        ex: ['USDA/NAIP/DOQQ/m_4012407_se_10_1_20100612']
+
+                }
+        download_bands (str): type of imagery to download
+            must be one of the following strings "multiband","singleband", or "both
+    """
+    # trigger a timeout after 3000 seconds(1 hour)
+    timeout = aiohttp.ClientTimeout(total=3000)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        # creates task for each tile to be downloaded and waits for tasks to complete
+        tasks = []
+        for counter, tile_dict in enumerate(tiles_info):
+
+            polygon = tile_dict["polygon"]
+            filepath = os.path.abspath(tile_dict["filepath"])
+            parent_dir = os.path.dirname(filepath)
+            multiband_filepath = os.path.join(parent_dir, "multiband")
+            filenames = {
+                "multiband": "multiband" + str(counter),
+                "singleband": os.path.basename(filepath),
+            }
+            for tile_id in tile_dict["ids"]:
+                logger.info(f"tile_id: {tile_id}")
+                file_id = tile_id.replace("/", "_")
+                # handles edge case where tile has 2 years in the tile ID by extracting the ealier year
+                year_str = file_id.split("_")[-1][:4]
+                if len(file_id.split("_")[-2]) == 8:
+                    year_str = file_id.split("_")[-2][:4]
+
+                # full path to year directory within multiband dir eg. ./multiband/2012
+                year_filepath = os.path.join(multiband_filepath, year_str)
+                logger.info(f"year_filepath: {year_filepath}")
+                tasks.extend(
+                    create_tasks(
+                        session,
+                        polygon,
+                        tile_id,
+                        filepath,
+                        year_filepath,
+                        filenames,
+                        file_id,
+                        download_bands,
+                    )
+                )
+        # show a progress bar of all the requests in progress
+        await tqdm.asyncio.tqdm.gather(*tasks, position=0, desc=f"All Downloads")
+
+
+# call asyncio to run download_ROIs
+def run_async_download(
+    download_path: str,
+    roi_gdf: gpd.GeoDataFrame,
+    ids: List[str],
+    dates: Tuple[str],
+    download_bands: str,
+) -> None:
+    """creates a nested loop that's used to asynchronously download imagery and waits for all the imagery to download
+    Args:
+        download_path (str): full path to directory to download imagery to
+        roi_gdf (gpd.GeoDataFrame): geodataframe of ROIs on the map
+        ids (List[str]): ids of ROIs to download imagery for
+        dates (Tuple[str]): start and end dates
+        download_bands (str): type of imagery to download
+            must be one of the following strings "multiband","singleband", or "both"
+    """
+    if platform.system() == "Windows":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    # apply a nested loop to jupyter's event loop for async downloading
+    nest_asyncio.apply()
+    # get nested running loop and wait for async downloads to complete
+    loop = asyncio.get_running_loop()
+    loop.run_until_complete(
+        download_rois(download_path, roi_gdf, ids, dates, download_bands)
+    )
+
+
 async def get_ids_for_tile(
     year_path, gee_collection, tile, dates, semaphore: asyncio.Semaphore
-) -> dict:
+):
     async with semaphore:
         collection = ee.ImageCollection(gee_collection)
         polygon = ee.Geometry.Polygon(tile)
@@ -588,11 +531,12 @@ async def get_tiles_info(
     # iterate over completed tasks using asyncio.as_completed()
     results = []
     for coro in asyncio.as_completed(tasks):
-        # update progress bar
-        pbar.update(1)
         result = await coro
         logger.info(f"coro result {result}")
         results.append(result)
+
+        # update progress bar
+        pbar.update(1)
 
     # close progress bar and return results
     pbar.close()
@@ -627,6 +571,88 @@ def get_tile_coords(num_splitters: int, roi_gdf: gpd.GeoDataFrame) -> list[list[
         split_polygon = splitPolygon(roi_gdf, num_splitters)
         tile_coords = [list(part.exterior.coords) for part in split_polygon.geoms]
     return tile_coords
+
+
+# async def download_ROI(
+#     download_path: str,
+#     roi_gdf: gpd.GeoDataFrame,
+#     roi_id: str,
+#     dates: Tuple[str],
+#     download_bands: str,
+# ) -> None:
+#     """
+#     Download the imagery data for a given region of interest (ROI) within specified dates. The ROI is split into smaller rectangles to minimize the amount of data that needs to be downloaded. The downloaded data is unzipped and merged into a single multiband image.
+
+#     Parameters:
+#         download_path (str): The path where the downloaded data should be saved.
+#         roi_gdf (gpd.GeoDataFrame): The geographical data for the ROI.
+#         roi_id (str): A string identifier for the ROI.
+#         dates (Tuple[str]): A tuple of two strings representing the start and end date of the imagery data to be downloaded.
+#         download_bands (str): A string indicating which bands should be downloaded, either "multiband", "singleband", or "both".
+
+#     Returns:
+#         None
+#     """
+#     gee_collection = "USDA/NAIP/DOQQ"
+#     # get number of splitters need to split ROI into rectangles of 1km^2 area (or less)
+#     num_splitters = get_num_splitters(roi_gdf)
+#     logger.info(f"Splitting ROI into {num_splitters}x{num_splitters} tiles")
+
+#     # split ROI into rectangles of 1km^2 area (or less)
+#     tile_coords = get_tile_coords(num_splitters, roi_gdf)
+#     logger.info(f"tile_coords: {tile_coords}")
+
+#     # name of ROI folder to contain all downloaded data
+#     roi_name = f"ID_{roi_id}_dates_{dates[0]}_to_{dates[1]}"
+#     roi_path = os.path.join(download_path, roi_name)
+#     # create directory to hold all multiband files
+#     multiband_path = os.path.join(roi_path, "multiband")
+#     create_dir(multiband_path, raise_error=False)
+
+#     # create subdirectories for each year
+#     start_date = dates[0].split("-")[0]
+#     end_date = dates[1].split("-")[0]
+#     logger.info(f"start_date : {start_date } end_date : {end_date }")
+#     common.create_year_directories(int(start_date), int(end_date), multiband_path)
+
+#     # Get list of tile info needed for download
+#     tiles_info = get_tiles_info(tile_coords, dates, roi_path, gee_collection)
+#     print(f"tiles_info: {tiles_info}")
+#     if sum_imgs == 0:
+#         raise exceptions.No_Images_Available(
+#             f"No images found within these dates : {dates}"
+#         )
+#     # if both single band and multiband imagery will be downloaded then double number images
+#     sum_imgs *= 2 if download_bands == "both" else 1
+#     print(f"Total Images to Download: {sum_imgs}")
+#     logger.info(f"Total Images to Download: {sum_imgs}")
+
+#     # make directories for all tiles within ROI
+#     mk_filepaths(tiles_info)
+#     # download ROI tiles concurrently
+#     await async_download_tiles(tiles_info, download_bands)
+
+
+# async def download_rois(
+#     download_path: str,
+#     roi_gdf: gpd.GeoDataFrame,
+#     ids: List[str],
+#     dates: Tuple[str],
+#     download_bands: str,
+# ) -> None:
+#     no_imgs_counter = 0
+#     for roi_id in ids:
+#         # download selected ROI
+#         try:
+#             gpd_data = roi_gdf[roi_gdf["id"] == roi_id]
+#             await download_ROI(download_path, gpd_data, roi_id, dates, download_bands)
+#         except exceptions.No_Images_Available as error:
+#             no_imgs_counter += 1
+#     # if every ROI has no images available raise error
+#     if no_imgs_counter == len(ids):
+#         raise exceptions.No_Images_Available(
+#             f"No images found within these dates : {dates}"
+#         )
 
 
 def create_ROI_directories(download_path: str, roi_id: str, dates):
@@ -698,16 +724,31 @@ async def get_tiles_info_per_year(
         )
     # list_of_tiles = await asyncio.gather(*tasks)
     # create a progress bar for the number of tasks
-    # pbar = tqdm.asyncio.tqdm(total=len(tasks), desc=f"Downloading tiles for ROI: {roi_id}")
+    pbar = tqdm.asyncio.tqdm(
+        total=len(tasks), desc=f"Downloading tiles for ROI: {roi_id}"
+    )
 
     # iterate over completed tasks using asyncio.as_completed()
     list_of_tiles = []
-    for task in asyncio.as_completed(tasks):
-        result = await task
+    for coro in asyncio.as_completed(tasks):
+        result = await coro
         tile_key = list(result.keys())[0]
         tiles_per_year[tile_key] = result[tile_key]
+        logger.info(f"coro result {result}")
         list_of_tiles.append(result)
 
+        # update progress bar
+        pbar.update(1)
+
+    # close progress bar and return results
+    pbar.close()
+
+    # list_of_tiles = await asyncio.gather(*tasks)
+    # logger.info(f"tiles_per_year: {list_of_tiles}")
+
+    # for tile in list_of_tiles:
+    #     tile_key = list(tile.keys())[0]
+    #     tiles_per_year[tile_key] = tile[tile_key]
     logger.info(f"tiles_per_year: {tiles_per_year}")
     return {roi_id: tiles_per_year}
 
@@ -731,19 +772,38 @@ async def get_tiles_for_ids(
     ROI_tiles = {}
     tasks = []
     semaphore = asyncio.Semaphore(50)
-
     for roi_path, roi_id in zip(roi_paths, selected_ids):
         tasks.append(
             get_tiles_info_per_year(roi_path, rois_gdf, roi_id, dates, semaphore)
         )
 
-    list_of_ROIs = await tqdm.asyncio.tqdm.gather(
-        *tasks, position=0, desc=f"Getting tiles for each ROI"
+    # list_of_ROIs = await asyncio.gather(*tasks)
+    # create a progress bar for the number of tasks
+    pbar = tqdm.asyncio.tqdm(
+        total=len(tasks), position=0, desc=f"Getting tiles for each ROI"
     )
 
-    for roi in list_of_ROIs:
-        roi_id = list(roi.keys())[0]
-        ROI_tiles[roi_id] = roi[roi_id]
+    # iterate over completed tasks using asyncio.as_completed()
+    # list_of_ROIs = []
+    for coro in asyncio.as_completed(tasks):
+        result = await coro
+        roi_id = list(result.keys())[0]
+        ROI_tiles[roi_id] = result[roi_id]
+        # list_of_ROIs.append(result)
+
+        # update progress bar
+        pbar.update(1)
+
+    # close progress bar and return results
+    pbar.close()
+
+    # list_of_ROIs = await tqdm.asyncio.tqdm.gather(
+    #     *tasks, position=0, desc=f"Getting tiles for each ROI"
+    # )
+
+    # for roi in list_of_ROIs:
+    #     roi_id = list(roi.keys())[0]
+    #     ROI_tiles[roi_id] = roi[roi_id]
 
     logger.info(f"ROI_tiles: {ROI_tiles}")
     for roi_id in ROI_tiles.keys():

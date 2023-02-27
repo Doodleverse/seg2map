@@ -6,6 +6,7 @@ from collections import defaultdict
 
 # internal python imports
 from src.seg2map import exception_handler
+from src.seg2map import common
 
 # external python imports
 from IPython.display import display
@@ -22,6 +23,8 @@ from ipywidgets import HTML
 from ipywidgets import RadioButtons
 from ipywidgets import Text
 from ipywidgets import Output
+from ipywidgets import FloatSlider
+from ipywidgets import SelectionSlider
 
 
 logger = logging.getLogger(__name__)
@@ -69,17 +72,16 @@ class UI:
         # save an instance of Seg2Map
         self.seg2map = seg2map
         # button styles
-        self.remove_style = dict(button_color="red")
-        self.load_style = dict(button_color="#69add1")
-        self.action_style = dict(button_color="#ae3cf0")
-        self.save_style = dict(button_color="#50bf8f")
-        self.clear_stlye = dict(button_color="#a3adac")
+        self.get_button_styles()
 
         # buttons to load configuration files
         self.load_configs_button = Button(
             description="Load Config", style=self.load_style
         )
         self.load_configs_button.on_click(self.on_load_configs_clicked)
+
+        # buttons to load configuration files
+
         self.save_config_button = Button(
             description="Save Config", style=self.save_style
         )
@@ -104,6 +106,13 @@ class UI:
 
         # create the HTML widgets containing the instructions
         self._create_HTML_widgets()
+
+    def get_button_styles(self):
+        self.remove_style = dict(button_color="red")
+        self.load_style = dict(button_color="#69add1")
+        self.action_style = dict(button_color="#ae3cf0")
+        self.save_style = dict(button_color="#50bf8f")
+        self.clear_stlye = dict(button_color="#a3adac")
 
     def get_view_settings(self) -> VBox:
         # update settings button
@@ -197,6 +206,81 @@ class UI:
         )
         return remove_buttons
 
+    def segmentation_controls(self):
+        # define remove feature radio box button
+        instr = HTML(
+            value="<h2>Load Segmentations on the Map</h2>",
+            layout=Layout(padding="0px"),
+        )
+        self.load_segmentations_button = Button(
+            description="Load Segmentations", style=self.load_style
+        )
+        self.load_segmentations_button.on_click(self.on_load_session_clicked)
+
+        self.opacity_slider = FloatSlider(
+            value=1.0,
+            min=0,
+            max=1.0,
+            step=0.01,
+            description="Opacity:",
+            disabled=False,
+            continuous_update=False,
+            orientation="horizontal",
+            readout=True,
+            readout_format=".2f",
+        )
+
+        years = ["2010", "2012", "2013", "2015"]
+        self.year_slider = SelectionSlider(
+            options=years,
+            value=years[0],
+            description="Select a year:",
+            disabled=False,
+            continuous_update=False,
+            orientation="horizontal",
+            readout=True,
+        )
+
+        def year_slider_changed(change):
+            year = self.year_slider.value
+            for layer in self.seg2map.original_layers:
+                if year in layer.name:
+                    self.seg2map.map.add(layer)
+                if year not in layer.name and layer.name != "ROI":
+                    if layer in self.seg2map.map.layers:
+                        self.seg2map.map.remove(layer)
+            for layer in self.seg2map.seg_layers:
+                if year in layer.name:
+                    self.seg2map.map.add(layer)
+                if year not in layer.name and layer.name != "ROI":
+                    if layer in self.seg2map.map.layers:
+                        self.seg2map.map.remove(layer)
+
+        self.year_slider.observe(year_slider_changed, "value")
+
+        def opacity_slider_changed(change):
+            year = self.year_slider.value
+            layer_name = ""
+            for layer in self.seg2map.seg_layers:
+                if year in layer.name:
+                    layer_name = layer.name
+
+            value = self.opacity_slider.value
+            if layer_name != "":
+                self.seg2map.map.layer_opacity(layer_name, value)
+
+        self.opacity_slider.observe(opacity_slider_changed, "value")
+
+        segmentation_box = VBox(
+            [
+                instr,
+                self.load_segmentations_button,
+                self.year_slider,
+                self.opacity_slider,
+            ]
+        )
+        return segmentation_box
+
     def get_settings_html(
         self,
         settings: dict,
@@ -274,17 +358,14 @@ class UI:
         files_controls = self.get_file_controls()
         settings_controls = self.get_settings_vbox()
         remove_buttons = self.remove_buttons()
+        segmentation_controls = self.segmentation_controls()
+
         self.save_button = Button(
             description=f"Save ROIs to file", style=self.save_style
         )
         self.save_button.on_click(self.save_to_file_btn_clicked)
 
-        save_vbox = VBox(
-            [
-                files_controls,
-                remove_buttons,
-            ]
-        )
+        save_vbox = VBox([files_controls, remove_buttons, segmentation_controls])
         config_vbox = VBox(
             [self.instr_config_btns, self.load_configs_button, self.save_config_button]
         )
@@ -362,7 +443,7 @@ class UI:
         UI.download_view.clear_output()
         UI.debug_view.clear_output()
         self.seg2map.map.default_style = {"cursor": "wait"}
-        UI.debug_view.append_stdout("Scroll down past map to see download progress.")
+        print("Scroll down past map to see download progress.")
         try:
             self.download_button.disabled = True
             try:
@@ -389,6 +470,58 @@ class UI:
         for index in range(len(row.children)):
             row.children[index].close()
         row.children = []
+
+    @debug_view.capture(clear_output=True)
+    def on_load_session_clicked(self, button):
+        # Prompt user to select a config geojson file
+        def load_callback(filechooser: FileChooser) -> None:
+            try:
+                if filechooser.selected:
+                    self.seg2map.load_session(filechooser.selected)
+                    if self.seg2map.years == []:
+                        self.year_slider.disabled = True
+                        self.opacity_slider.disabled = True
+                    elif self.seg2map.years != []:
+                        self.year_slider.disabled = False
+                        self.opacity_slider.disabled = False
+                        self.year_slider.options = self.seg2map.years
+                        self.year_slider.value = self.seg2map.years[0]
+
+            except Exception as error:
+                # renders error message as a box on map
+                exception_handler.handle_exception(error, self.seg2map.warning_box)
+
+        # create instance of chooser that calls load_callback
+        dir_chooser = common.create_dir_chooser(
+            load_callback,
+            title="Select Session Directory",
+            starting_directory="sessions",
+        )
+        # clear row and close all widgets in row_4 before adding new file_chooser
+        self.clear_row(self.file_chooser_row)
+        # add instance of file_chooser to row 4
+        self.file_chooser_row.children = [dir_chooser]
+
+    @debug_view.capture(clear_output=True)
+    def load_segmentations(self, button):
+        # Prompt user to select a config geojson file
+        def load_callback(filechooser: FileChooser) -> None:
+            try:
+                if filechooser.selected:
+                    self.seg2map.load_configs(filechooser.selected)
+                    self.settings_html.value = self.get_settings_html(
+                        self.seg2map.settings
+                    )
+            except Exception as error:
+                # renders error message as a box on map
+                exception_handler.handle_exception(error, self.seg2map.warning_box)
+
+        # create instance of chooser that calls load_callback
+        file_chooser = create_file_chooser(load_callback)
+        # clear row and close all widgets in file_chooser_row before adding new file_chooser
+        self.clear_row(self.file_chooser_row)
+        # add instance of file_chooser to file_chooser_row
+        self.file_chooser_row.children = [file_chooser]
 
     @debug_view.capture(clear_output=True)
     def on_load_configs_clicked(self, button):
