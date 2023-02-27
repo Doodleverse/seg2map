@@ -86,48 +86,77 @@ class Seg2Map:
         return self.settings
 
     def load_session(self, session_path: str) -> None:
-        self.map.default_style = {"cursor": "wait"}
-        for year_name in os.listdir(session_path):
-            year_path = os.path.join(session_path, year_name)
-            logger.info(f"year_path: {year_path}")
-            year_path = os.path.join(session_path, year_name)
-            if len(glob(os.path.join(year_path, "*merged_multispectral.tif*"))) == 0:
-                continue
-            merged_tif_path = glob(
-                os.path.join(year_path, "*merged_multispectral.tif*")
-            )[0]
-            logger.info(f" merged_tif_path:  {merged_tif_path}")
-            self.years.append(year_name)
+        """
+        Loads a session onto the map, containing the segmented imagery and a model settings.json file that contains a reference to the original imagery.
 
-            # load original imagery on map
-            model_settings_path = os.path.join(year_path, "model_settings.json")
+        Args:
+            session_path: str - The path to the session directory containing the segmented imagery and model settings file.
+
+        Returns:
+            None.
+        """
+        self.map.default_style = {"cursor": "wait"}
+        import pathlib
+
+        session_path = pathlib.Path(session_path)
+        for year_path in session_path.glob("*"):
+            if not year_path.is_dir():
+                continue
+
+            logger.info(f"year_path: {year_path}")
+            merged_tif_path = year_path.glob("*merged_multispectral.tif*")
+            merged_tif_path = next(merged_tif_path, None)
+            if merged_tif_path is None:
+                logger.warning(
+                    f"Does not exist {os.path.join(year_path, '*merged_multispectral.tif*')}"
+                )
+                continue
+            logger.info(f"merged_tif_path: {merged_tif_path}")
+
+            # Load original imagery on map
+            model_settings_path = year_path / "model_settings.json"
             model_settings = common.read_json_file(model_settings_path)
-            roi_directory = model_settings["sample_direc"]
-            original_jpg_path = os.path.join(roi_directory, "merged_multispectral.jpg")
-            original_tif_path = os.path.join(roi_directory, "merged_multispectral.tif")
+
+            roi_directory = pathlib.Path(model_settings["sample_direc"])
+            original_jpg_path = roi_directory / "merged_multispectral.jpg"
+            original_tif_path = roi_directory / "merged_multispectral.tif"
+            if not original_jpg_path.is_file():
+                logger.warning(f"Does not exist {original_jpg_path}")
+                continue
+            if not original_tif_path.is_file():
+                logger.warning(f"Does not exist {original_tif_path}")
+                continue
             logger.info(f"original_jpg_path: {original_jpg_path}")
             logger.info(f"original_tif_path: {original_tif_path}")
-            layer_name = (
-                f"{os.path.basename(merged_tif_path).replace('.tif','')}_{year_name}"
-            )
+            layer_name = f"{merged_tif_path.stem}_{year_path.name}"
             logger.info(f"layer_name: {layer_name}")
             new_layer = common.get_image_overlay(
-                original_tif_path, original_jpg_path, layer_name
+                str(original_tif_path), str(original_jpg_path), layer_name
             )
             self.original_layers.append(new_layer)
 
-            # load segmentation on map
-            logger.info(f" merged_tif_path:  {merged_tif_path}")
-            jpg_path = glob(os.path.join(year_path, "*merged_multispectral.jp*g*"))[0]
-            logger.info(f" jpg_path:  {jpg_path}")
-            layer_name = f"{os.path.basename(merged_tif_path).replace('.tif','')}_segmentation_{year_name}"
+            # Load segmentation on map
+            jpg_path = year_path.glob("*merged_multispectral.jp*g*")
+            jpg_path = next(jpg_path, None)
+            if jpg_path is None:
+                logger.warning(
+                    f"Does not exist {os.path.join(year_path, '*merged_multispectral.jp*g*')}"
+                )
+                continue
+            logger.info(f"jpg_path: {jpg_path}")
+            layer_name = f"{merged_tif_path.stem}_segmentation_{year_path.name}"
             logger.info(f"layer_name: {layer_name}")
-            new_layer = common.get_image_overlay(merged_tif_path, jpg_path, layer_name)
+            new_layer = common.get_image_overlay(
+                str(merged_tif_path), str(jpg_path), layer_name
+            )
             self.seg_layers.append(new_layer)
+            self.years.append(year_path.name)
 
-        # display first year by default
-        self.map.add(self.original_layers[0])
-        self.map.add(self.seg_layers[0])
+        # Display first year by default
+        if self.original_layers != []:
+            self.map.add(self.original_layers[0])
+        if self.seg_layers != []:
+            self.map.add(self.seg_layers[0])
         self.map.default_style = {"cursor": "default"}
 
     def download_imagery(

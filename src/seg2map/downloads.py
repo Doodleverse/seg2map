@@ -756,11 +756,11 @@ async def get_tiles_for_ids(
 async def async_download_ROIs(ROI_tiles: List[dict], download_bands: str) -> None:
     """
     Downloads the specified bands for each ROI tile asynchronously using aiohttp and asyncio.
-    
+
     Parameters:
     ROI_tiles (List[dict]): A list of dictionaries representing the ROI tiles to download.
     download_bands (str): A comma-separated string of band numbers to download.
-    
+
     Returns:
     None: This function does not return anything.
     """
@@ -783,12 +783,12 @@ async def async_download_year(
 ) -> None:
     """
     Downloads the specified bands for each tile in the specified year asynchronously using aiohttp and asyncio.
-    
+
     Parameters:
     tiles_info (List[dict]): A list of dictionaries representing the tiles to download.
     download_bands (str): A comma-separated string of band numbers to download.
     session: The aiohttp session to use for downloading.
-    
+
     Returns:
     None: This function does not return anything.
     """
