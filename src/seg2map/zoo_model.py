@@ -19,11 +19,14 @@ import nest_asyncio
 from skimage.io import imread
 from tensorflow.keras import mixed_precision
 from doodleverse_utils.prediction_imports import do_seg
-from doodleverse_utils.imports import (
+from doodleverse_utils.model_imports import (
     simple_resunet,
-    simple_unet,
     custom_resunet,
     custom_unet,
+    simple_unet,
+    simple_resunet,
+    simple_satunet,
+    segformer,
 )
 from doodleverse_utils.model_imports import dice_coef_loss, iou_multi, dice_multi
 import tensorflow as tf
@@ -335,8 +338,6 @@ def get_GPU(num_GPU: str) -> None:
                 # Visible devices must be set at program startup
                 logger.error(e)
                 print(e)
-        # set mixed precision
-        mixed_precision.set_global_policy("mixed_float16")
         # disable memory growth on all GPUs
         for i in physical_devices:
             tf.config.experimental.set_memory_growth(i, True)
@@ -541,6 +542,7 @@ class Zoo_Model:
         # Load the model from the config files
         model, model_list, config_files, model_types = self.get_model(weights_list)
         metadatadict = self.get_metadatadict(weights_list, config_files, model_types)
+        logger.info(f"metadatadict: {metadatadict}")
         model_dict = {
             "sample_direc": None,
             "use_GPU": use_GPU,
@@ -644,6 +646,7 @@ class Zoo_Model:
         use_tta: bool,
         use_otsu: bool,
     ):
+
         logger.info(f"Test Time Augmentation: {use_tta}")
         logger.info(f"Otsu Threshold: {use_otsu}")
         # Read in the image filenames as either .npz,.jpg, or .png
@@ -651,6 +654,11 @@ class Zoo_Model:
             sample_direc, avoid_names=["merged_multispectral"]
         )
         logger.info(f"files_to_segment: {files_to_segment}")
+        if model_types[0] != "segformer":
+            ### mixed precision
+            from tensorflow.keras import mixed_precision
+
+            mixed_precision.set_global_policy("mixed_float16")
         # Compute the segmentation for each of the files
         for file_to_seg in tqdm.auto.tqdm(files_to_segment):
             do_seg(
@@ -772,14 +780,12 @@ class Zoo_Model:
                         num_layers=4,
                         strides=(1, 1),
                     )
-                # 346,564
+                    # 346,564
                 elif MODEL == "simple_unet":
                     model = simple_unet(
                         (self.TARGET_SIZE[0], self.TARGET_SIZE[1], self.N_DATA_BANDS),
                         kernel=(2, 2),
-                        num_classes=[
-                            self.NCLASSES + 1 if self.NCLASSES == 1 else self.NCLASSES
-                        ][0],
+                        nclasses=self.NCLASSES,
                         activation="relu",
                         use_batch_norm=True,
                         dropout=DROPOUT,  # 0.1,
@@ -790,10 +796,32 @@ class Zoo_Model:
                         num_layers=4,
                         strides=(1, 1),
                     )
+                elif MODEL == "satunet":
+                    model = simple_satunet(
+                        (self.TARGET_SIZE[0], self.TARGET_SIZE[1], self.N_DATA_BANDS),
+                        kernel=(2, 2),
+                        num_classes=self.NCLASSES,  # [NCLASSES+1 if NCLASSES==1 else NCLASSES][0],
+                        activation="relu",
+                        use_batch_norm=True,
+                        dropout=DROPOUT,
+                        dropout_change_per_layer=DROPOUT_CHANGE_PER_LAYER,
+                        dropout_type=DROPOUT_TYPE,
+                        use_dropout_on_upsampling=USE_DROPOUT_ON_UPSAMPLING,
+                        filters=FILTERS,
+                        num_layers=4,
+                        strides=(1, 1),
+                    )
+                elif MODEL == "segformer":
+                    id2label = {}
+                    for k in range(self.NCLASSES):
+                        id2label[k] = str(k)
+                    model = segformer(id2label, num_classes=self.NCLASSES)
+                    model.compile(optimizer="adam")
                 # 242,812
                 else:
                     raise Exception(
-                        f"An unknown model type {MODEL} was received. Please select a valid model."
+                        f"An unknown model type {MODEL} was received. Please select a valid model.\n \
+                        Model must be one of 'unet', 'resunet', 'segformer', or 'satunet'"
                     )
 
                 # Load in the custom loss function from doodleverse_utils
