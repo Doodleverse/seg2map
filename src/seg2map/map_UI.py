@@ -249,18 +249,16 @@ class UI:
 
         def year_slider_changed(change):
             year = self.year_slider.value
-            for layer in self.seg2map.original_layers:
-                if year in layer.name:
-                    self.seg2map.map.add(layer)
+            for layer in self.seg2map.original_layers + self.seg2map.seg_layers:
+                # if year in layer name and layer not on map
+                if (
+                    year in layer.name
+                    and self.seg2map.map.find_layer(layer.name) is None
+                ):
+                    self.seg2map.map.add_layer(layer)
                 if year not in layer.name and layer.name != "ROI":
                     if layer in self.seg2map.map.layers:
-                        self.seg2map.map.remove(layer)
-            for layer in self.seg2map.seg_layers:
-                if year in layer.name:
-                    self.seg2map.map.add(layer)
-                if year not in layer.name and layer.name != "ROI":
-                    if layer in self.seg2map.map.layers:
-                        self.seg2map.map.remove(layer)
+                        self.seg2map.map.remove_layer(layer)
 
         self.year_slider.observe(year_slider_changed, "value")
 
@@ -565,9 +563,7 @@ class UI:
         UI.debug_view.clear_output(wait=True)
         try:
             if "rois" in btn.description.lower():
-                print(f"Removing ROIs")
                 self.seg2map.launch_delete_box(self.seg2map.remove_box)
-                # self.Seg2Map.remove_all_rois()
         except Exception as error:
             # renders error message as a box on map
             exception_handler.handle_exception(error, self.seg2map.warning_box)
@@ -576,7 +572,7 @@ class UI:
     def remove_seg_clicked(self, btn):
         UI.debug_view.clear_output(wait=True)
         try:
-            self.seg2map.remove_seg()
+            self.seg2map.remove_segmentation_layers()
 
         except Exception as error:
             # renders error message as a box on map

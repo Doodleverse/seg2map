@@ -154,9 +154,10 @@ class Seg2Map:
 
         # Display first year by default
         if self.original_layers != []:
-            self.map.add(self.original_layers[0])
+            print(self.map.find_layer(self.original_layers[0].name))
+            self.map.add_layer(self.original_layers[0])
         if self.seg_layers != []:
-            self.map.add(self.seg_layers[0])
+            self.map.add_layer(self.seg_layers[0])
         self.map.default_style = {"cursor": "default"}
 
     def download_imagery(
@@ -243,7 +244,7 @@ class Seg2Map:
         #             common.merge_tifs(multiband_path=dir_path, roi_path=dir_path)
 
     def create_delete_box(self, title: str = None, msg: str = None):
-        padding = "0px 0px 0px 5px"  # upper, right, bottom, left
+        padding = "0px 5px 0px 5px"  # upper, right, bottom, left
         # create title
         if title is None:
             title = "Delete Selected ROIs?"
@@ -507,7 +508,7 @@ class Seg2Map:
         del tmp_settings
         logger.info(f"Settings: {self.settings}")
 
-    def update_roi_html(self, feature, **kwargs):
+    def roi_on_hover(self, feature, **kwargs):
         # Modifies html of accordion when roi is hovered over
         values = defaultdict(lambda: "unknown", feature["properties"])
         # convert area of ROI to km^2
@@ -535,20 +536,39 @@ class Seg2Map:
         selected_rois_gdf = self.rois.gdf[self.rois.gdf["id"].isin(roi_ids)]
         return selected_rois_gdf
 
-    def remove_all(self):
-        """Remove the bbox, all rois from the map"""
+    def remove_all(self) -> None:
+        """Remove the rois and imagery from the map"""
         self.remove_all_rois()
+        self.remove_segmentation_layers()
 
-    def remove_seg(self):
-        for layer in self.seg_layers:
-            if layer in self.map.layers:
-                self.map.remove(layer)
-        for layer in self.original_layers:
-            if layer in self.map.layers:
-                self.map.remove(layer)
-        self.original_layers = []
-        self.seg_layers = []
-        self.years = []
+    def remove_segmentation_layers(self) -> None:
+        """
+        Removes segmentation and original layers from the map and clears related lists.
+
+        This function loops through the segmentation and original layers and removes them from the map if they are present.
+        It also clears the `self.original_layers`, `self.seg_layers`, and `self.years` lists.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        # Remove all original and segmentation layers from the map
+        remove_layers = [
+            layer
+            for layer in self.original_layers + self.seg_layers
+            if layer in self.map.layers
+        ]
+        print(list(map(lambda x: x.name, remove_layers)))
+        logger.info(f"remove_layers: {list(map(lambda x:x.name,remove_layers))}")
+        for layer in remove_layers:
+            self.map.remove(layer)
+
+        # Clear the lists of original and segmentation layers and years
+        self.original_layers.clear()
+        self.seg_layers.clear()
+        self.years.clear()
 
     def remove_layer_by_name(self, layer_name: str):
         existing_layer = self.map.find_layer(layer_name)
@@ -661,7 +681,7 @@ class Seg2Map:
         # replaces roi layer new layer that has on click handler to select the roi
         if not self.rois.gdf.empty:
             # add roi hover and click handlers for roi
-            on_hover = self.update_roi_html
+            on_hover = self.roi_on_hover
             on_click = self.select_onclick_handler
             layer_name = ROI.LAYER_NAME
             # load new roi layer on map that doesn't contain rois that were removed
@@ -683,7 +703,7 @@ class Seg2Map:
                 self.SELECTED_LAYER_NAME,
                 selected_layer,
                 on_click=self.deselect_onclick_handler,
-                on_hover=self.update_roi_html,
+                on_hover=self.roi_on_hover,
             )
         # empty self.delete_set so its empty for next time
         self.delete_set = set()
@@ -704,17 +724,21 @@ class Seg2Map:
         Returns:
             None
         """
+        # if no ROIs are on the map return
+        if self.map.find_layer(ROI.LAYER_NAME) is None:
+            return
         # temporarily remove selected layer from map
         self.remove_layer_by_name(self.SELECTED_LAYER_NAME)
-        # change color of ROIs to red to indicate they will be deleted
-        on_hover = self.update_roi_html
+        # show roi area on hover
+        on_hover = self.roi_on_hover
+        # use ROI layer's "on click" event to color ROIs red to indicate they will be deleted
         on_click = self.select_for_delete_onclick
         layer_name = ROI.LAYER_NAME
         self.load_on_map(self.rois, layer_name, on_hover, on_click)
 
     def launch_delete_box(
         self, row: "ipywidgets.HBox", title: str = None, msg: str = None
-    ):
+    ) -> None:
         """Launch the delete box for the map.
 
         This function displays a delete box to the user, puts the ROI layers in delete state,
@@ -776,7 +800,7 @@ class Seg2Map:
         is provided, it uses the GeoDataFrame stored in `self.rois.gdf`.
 
         The feature is added to the map using the `self.load_on_map` method, with the `layer_name`
-        set to `ROI.LAYER_NAME`, the `on_hover` set to `self.update_roi_html`, and the `on_click` set
+        set to `ROI.LAYER_NAME`, the `on_hover` set to `self.roi_on_hover`, and the `on_click` set
         to `self.select_onclick_handler`.
 
         Args:
@@ -797,7 +821,7 @@ class Seg2Map:
             self.map.zoom_to_bounds(bounds)
 
         new_feature = self.rois
-        on_hover = self.update_roi_html
+        on_hover = self.roi_on_hover
         on_click = self.select_onclick_handler
         layer_name = ROI.LAYER_NAME
         # load new feature on map
@@ -894,7 +918,7 @@ class Seg2Map:
             self.DELETE_LAYER_NAME,
             delete_layer,
             on_click=self.deselect_for_delete_onclick,
-            on_hover=self.update_roi_html,
+            on_hover=self.roi_on_hover,
         )
 
     def deselect_for_delete_onclick(
@@ -933,7 +957,7 @@ class Seg2Map:
             self.DELETE_LAYER_NAME,
             delete_layer,
             on_click=self.select_for_delete_onclick,
-            on_hover=self.update_roi_html,
+            on_hover=self.roi_on_hover,
         )
 
     def select_onclick_handler(
@@ -972,7 +996,7 @@ class Seg2Map:
             self.SELECTED_LAYER_NAME,
             selected_layer,
             on_click=self.deselect_onclick_handler,
-            on_hover=self.update_roi_html,
+            on_hover=self.roi_on_hover,
         )
 
     def deselect_onclick_handler(
@@ -1010,7 +1034,7 @@ class Seg2Map:
             self.SELECTED_LAYER_NAME,
             selected_layer,
             on_click=self.deselect_onclick_handler,
-            on_hover=self.update_roi_html,
+            on_hover=self.roi_on_hover,
         )
 
     def save_feature_to_file(self, feature: ROI, filename: str = "ROI.geojson"):

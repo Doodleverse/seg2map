@@ -906,7 +906,7 @@ def create_subdirectory(name: str, parent_dir: str = None) -> str:
 
 
 def create_warning_box(title: str = None, msg: str = None):
-    padding = "0px 0px 0px 5px"  # upper, right, bottom, left
+    padding = "0px 5px 0px 5px"  # upper, right, bottom, left
     # create title
     if title is None:
         title = "Warning"
@@ -928,14 +928,23 @@ def create_warning_box(title: str = None, msg: str = None):
         button_style="danger",
         layout=Layout(height="28px", width="28px", padding=padding),
     )
+    ok_button = ToggleButton(
+        value=False,
+        tooltip="Close Warning Box",
+        description="OK",
+        button_style="danger",
+        layout=Layout(height="28px", width="28px", padding="0px 0px 0px 0px"),
+    )
 
     def close_click(change):
         if change["new"]:
             warning_content.close()
             close_button.close()
+            ok_button.close()
 
+    ok_button.observe(close_click, "value")
     close_button.observe(close_click, "value")
-    warning_box = HBox([warning_content, close_button])
+    warning_box = HBox([VBox([warning_content, ok_button]), close_button])
     return warning_box
 
 
