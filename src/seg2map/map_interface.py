@@ -560,7 +560,6 @@ class Seg2Map:
             for layer in self.original_layers + self.seg_layers
             if layer in self.map.layers
         ]
-        print(list(map(lambda x: x.name, remove_layers)))
         logger.info(f"remove_layers: {list(map(lambda x:x.name,remove_layers))}")
         for layer in remove_layers:
             self.map.remove(layer)

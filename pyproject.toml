@@ -3,17 +3,19 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "Seg2Map"
+name = "seg2map"
 dynamic = ["readme"]
-version = "0.0.1"
+version = "0.0.3"
 authors = [
   { name=" Sharon Fitzpatrick", email="sharon.fitzpatrick23@gmail.com" },
 ]
 # find` directive with `include` or `exclude`
 description = "An interactive jupyter notebook for downloading satellite imagery"
 dependencies = [
+  "transformers",
+  "rasterio",
   "area",
-  "doodleverse-utils>=0.0.18",
+  "doodleverse-utils>=0.0.26",
   "ipyfilechooser>=0.6.0",
   "tqdm",
   "leafmap>=0.14.0",
@@ -36,5 +38,5 @@ where = ["src"]
 
 
 [project.urls]
-"Homepage" = "https://github.com/SatelliteShorelines/CoastSeg"
-"Bug Tracker" = "https://github.com/SatelliteShorelines/CoastSeg/issues"
+"Homepage" = "https://github.com/Doodleverse/seg2map"
+"Bug Tracker" = "https://github.com/Doodleverse/seg2map/issues"
