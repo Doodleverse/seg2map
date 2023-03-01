@@ -8,7 +8,7 @@ import json
 import math
 from datetime import datetime
 import logging
-from typing import Union, List
+from typing import Set, Union, List
 import json
 import math
 import logging
@@ -66,11 +66,12 @@ def get_rgb_img(img_path: str) -> str:
     """
     if img_path.endswith(".jpg"):
         im = Image.open(img_path, formats=("JPEG",)).convert("RGB")
-        out_path = img_path.replace(".jpg", "RGB_.jpg")
+        out_path = img_path.replace(".jpg", "_RGB.jpg")
     elif img_path.endswith(".png"):
         im = Image.open(img_path, formats=("PNG",)).convert("RGB")
-        out_path = img_path.replace(".png", "RGB_.png")
+        out_path = img_path.replace(".png", "_RGB.png")
     im.save(out_path)
+
     return out_path
 
 
@@ -309,6 +310,7 @@ def get_merged_multispectural(src_path: str) -> str:
     """
     tif_files = glob(os.path.join(src_path, "*.tif"))
     tif_files = [file for file in tif_files if "merged_multispectral" not in file]
+
     logger.info(f"Found {len(tif_files)} GeoTIFF files in {src_path}")
     logger.info(f"tif_files: {tif_files}")
     merged_files = []
@@ -541,24 +543,56 @@ def rename_files(directory: str, pattern: str, new_name: str, replace_name: str)
         os.rename(file, new_file_path)
 
 
-def copy_files(src_files: List[str], dst_dir: str, avoid_names: List[str] = []) -> None:
+def filter_files(files: List[str], avoid_patterns: List[str]) -> List[str]:
+    """
+    Filter a list of filepaths based on a list of avoid patterns.
+
+    Args:
+        files: A list of filepaths to filter.
+        avoid_patterns: A list of regular expression patterns to avoid.
+
+    Returns:
+        A list of filepaths whose filenames do not match any of the patterns in avoid_patterns.
+
+    Examples:
+        >>> files = ['/path/to/file1.txt', '/path/to/file2.txt', '/path/to/avoid_file.txt']
+        >>> avoid_patterns = ['.*avoid.*']
+        >>> filtered_files = filter_files(files, avoid_patterns)
+        >>> print(filtered_files)
+        ['/path/to/file1.txt', '/path/to/file2.txt']
+
+    """
+    filtered_files = []
+    for file in files:
+        # Check if the file's name matches any of the avoid patterns
+        for pattern in avoid_patterns:
+            if re.match(pattern, os.path.basename(file)):
+                break
+        else:
+            # If the file's name does not match any of the avoid patterns, add it to the filtered files list
+            filtered_files.append(file)
+    return filtered_files
+
+
+def copy_files(
+    src_files: List[str], dst_dir: str, avoid_patterns: List[str] = []
+) -> None:
     """Copy files from a list of source files to a destination directory, while avoiding files with specific names.
 
     Args:
     src_files (List[str]): A list of file paths to be copied.
     dst_dir (str): The path to the destination directory.
-    avoid_names (List[str], optional): A list of substrings to avoid in filenames. Defaults to [].
+    avoid_patterns (List[str], optional): A list of substrings to avoid in filenames. Defaults to [].
 
     Returns:
     None
     """
     logger.info(f"Copying files to {dst_dir}. Files: {src_files}")
     os.makedirs(dst_dir, exist_ok=True)
-    for src_file in src_files:
-        filename = os.path.basename(src_file)
-        if any(name in filename for name in avoid_names):
-            continue
-        dst_file = os.path.join(dst_dir, filename)
+    files = filter_files(src_files, avoid_patterns)
+
+    for src_file in files:
+        dst_file = os.path.join(dst_dir, os.path.basename(src_file))
         shutil.copy(src_file, dst_file)
 
 

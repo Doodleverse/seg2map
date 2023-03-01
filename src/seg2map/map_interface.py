@@ -1,4 +1,5 @@
 import os
+import pathlib
 from glob import glob
 import json
 import logging
@@ -96,7 +97,6 @@ class Seg2Map:
             None.
         """
         self.map.default_style = {"cursor": "wait"}
-        import pathlib
 
         session_path = pathlib.Path(session_path)
         for year_path in session_path.glob("*"):

@@ -6,7 +6,7 @@ import asyncio
 import platform
 import json
 import logging
-from typing import List
+from typing import List, Set
 from src.seg2map import common
 import requests
 import skimage
@@ -36,6 +36,31 @@ logger = logging.getLogger(__name__)
 from time import perf_counter
 
 
+def get_sorted_files_with_extension(
+    sample_direc: str, file_extensions: List[str]
+) -> List[str]:
+    """
+    Get a sorted list of paths to files that have one of the file_extensions.
+    It will return the first set of files that matches the first file_extension, so put the
+    file_extension list in order of priority
+
+    Args:
+        sample_direc: A string representing the directory path to search for images.
+        file_extensions: A list of file extensions to search for.
+
+    Returns:
+        A list of file paths for sample images found in the directory.
+
+    """
+    sample_filenames = []
+    for ext in file_extensions:
+        filenames = sorted(tf.io.gfile.glob(os.path.join(sample_direc, f"*{ext}")))
+        sample_filenames.extend(filenames)
+        if sample_filenames:
+            break
+    return sample_filenames
+
+
 def get_merged_multispectural(src_path: str) -> str:
     """
     Merges multiple GeoTIFF files into a single VRT file and returns the path of the merged file.
@@ -50,11 +75,13 @@ def get_merged_multispectural(src_path: str) -> str:
     """
     year_name = os.path.basename(src_path)
     tif_files = glob(os.path.join(src_path, "*.tif"))
-    tif_files = [file for file in tif_files if "merged_multispectral" not in file]
-    logger.info(f"Found {len(tif_files)} GeoTIFF files in {src_path}")
-    logger.info(f"tif_files: {tif_files}")
+    tif_files = common.filter_files(tif_files, [r".*merged_multispectral.*"])
+    logger.info(
+        f"Found {len(tif_files)} GeoTIFF files in {src_path}.\n tif_files: {tif_files}"
+    )
     merged_files = []
-    for idx, files in enumerate(common.group_files(tif_files, 4)):
+    # old grouping strategy... doesn't really do anything
+    for idx, files in enumerate(common.group_files(tif_files, 6)):
         filename = f"merged_multispectral_{idx}.vrt"
         dst_path = os.path.join(src_path, filename)
         merged_tif = common.merge_files(files, dst_path, create_jpg=False)
@@ -64,8 +91,9 @@ def get_merged_multispectural(src_path: str) -> str:
     dst_path = os.path.join(src_path, "merged_multispectral.vrt")
     merged_file = common.merge_files(merged_files, dst_path)
     # delete intermediate merged tifs and vrts
-    pattern = ".*merged_multispectral_\d+.*"
-    deleted_files = common.delete_files(pattern, src_path)
+    deleted_files = common.delete_files(
+        pattern=".*merged_multispectral_\d+.*", path=src_path
+    )
     logger.info(f"deleted_files {deleted_files}")
     return merged_file
 
@@ -421,7 +449,9 @@ class Zoo_Model:
     def __init__(self):
         self.weights_direc = None
 
-    def get_files_for_seg(self, sample_direc: str, avoid_names: List[str] = []) -> list:
+    def get_files_for_seg(
+        self, sample_direc: str, avoid_patterns: List[str] = []
+    ) -> list:
         """
         Returns a list of files to be segmented.
 
@@ -430,49 +460,37 @@ class Zoo_Model:
 
         Args:
         - sample_direc (str): The directory containing files to be segmented.
-        - avoid_names (List[str], optional): A list of file names to be avoided.Don't include any file extensions. Default is [].
+        - avoid_patterns (List[str], optional): A list of file names to be avoided.Don't include any file extensions. Default is [].
 
         Returns:
         - list: A list of files to be segmented.
         """
         file_extensions = [".npz", ".jpg", ".png"]
-        sample_filenames = []
-
-        npz_filenames = sorted(
-            tf.io.gfile.glob(sample_direc + os.sep + "*" + file_extensions[0])
+        sample_filenames = get_sorted_files_with_extension(
+            sample_direc, file_extensions
         )
-        # if no npz files were get image filename
-        if len(npz_filenames) == 0:
-            for ext in file_extensions[0:]:
-                filenames = sorted(tf.io.gfile.glob(sample_direc + os.sep + "*" + ext))
-                sample_filenames.extend(filenames)
-                if sample_filenames:
-                    break
-        sample_filenames = [
-            filename
-            for filename in sample_filenames
-            if os.path.splitext(os.path.basename(filename))[0] not in avoid_names
-        ]
+        # filter out files whose filenames match any of the avoid_patterns
+        sample_filenames = common.filter_files(sample_filenames, avoid_patterns)
         logger.info(f"files to seg: {sample_filenames}")
         return sample_filenames
 
-    def create_model_data(self, directories: List[str], avoid_names: List["str"] = []):
+    def create_model_data(self, directories: List[str], avoid_patterns: List[str] = []):
         translateoptions = "-of JPEG -co COMPRESS=JPEG -co TFW=YES -co QUALITY=100"
         for dir in directories:
             files = glob(os.path.join(dir, ".tif"))
-            files = [file for file in files if file not in avoid_names]
+            files = common.filter_files(files, avoid_patterns)
             logger.info(f"Translating tifs to jpgs {files}")
             common.gdal_translate_jpeg(files, translateoptions)
 
     def create_jpgs_for_tifs(
-        self, directories: List[str], avoid_names: List["str"] = []
+        self, directories: List[str], avoid_patterns: List["str"] = []
     ):
         """
         Creates JPEG files for TIF files in specified directories.
 
         Args:
             directories (List[str]): List of directory paths where TIF files are located.
-            avoid_names (List[str], optional): List of file names to exclude. Defaults to [].
+            avoid_patterns (List[str], optional): List of file names to exclude. Defaults to [].
 
         Returns:
             None
@@ -482,7 +500,7 @@ class Zoo_Model:
         for directory in tqdm.auto.tqdm(
             directories, desc="Convert .tif to .jpg", leave=False, unit_scale=True
         ):
-            tif_files = self.get_tifs_missing_jpgs(directory, avoid_names)
+            tif_files = self.get_tifs_missing_jpgs(directory, avoid_patterns)
             if len(tif_files) == 0:
                 logger.info(
                     f"All tifs in directory '{directory}' have corresponding jpgs."
@@ -493,22 +511,21 @@ class Zoo_Model:
             common.gdal_translate_jpeg(tif_files, translateoptions)
 
     def get_tifs_missing_jpgs(
-        self, full_path: str, avoid_names: List[str] = []
+        self, full_path: str, avoid_patterns: List[str] = []
     ) -> List[str]:
         """
         Returns a list of TIF files in `full_path` that are missing corresponding JPG files.
 
         Args:
             full_path (str): The path to the directory containing the TIF files.
-            avoid_names (List[str]): A list of TIF file names to ignore.
+            avoid_patterns (List[str]): A list of TIF file names to ignore.
 
         Returns:
             List[str]: A list of TIF file names that are missing corresponding JPG files.
         """
-        logger.info(f"full_path: {full_path}")
         tif_files = glob(os.path.join(full_path, "*.tif"))
-        logger.info(f"tif_files {tif_files}")
-        tif_files = [file for file in tif_files if file not in avoid_names]
+        logger.info(f"all tif_files {tif_files}")
+        tif_files = common.filter_files(tif_files, avoid_patterns)
         missing_jpgs = [
             file
             for file in tif_files
@@ -564,7 +581,9 @@ class Zoo_Model:
         year_dirs = common.get_matching_dirs(src_directory, pattern=r"^\d{4}$")
 
         # create jpgs for all tifs that don't have one
-        self.create_jpgs_for_tifs(year_dirs, avoid_names=["merged_multispectral"])
+        self.create_jpgs_for_tifs(
+            year_dirs, avoid_patterns=[".*merged_multispectral.*"]
+        )
         # @todo get jpgs in each directory and add to a total to use for the progress bar
 
         logger.info(f"session directory: {session_dir}")
@@ -612,17 +631,15 @@ class Zoo_Model:
             )
             # copy the xml files associated with each model output
             xml_files = glob(os.path.join(year_dir, "*aux.xml"))
-            common.copy_files(xml_files, session_year_path, avoid_names=["merged"])
+            common.copy_files(
+                xml_files, session_year_path, avoid_patterns=[".*merged.*"]
+            )
             # rename all the xml files
             common.rename_files(
                 session_year_path, "*aux.xml", new_name=".png", replace_name=".jpg"
             )
             png_files = glob(os.path.join(session_year_path, "*png"))
-            png_files = [
-                filename
-                for filename in png_files
-                if "overlay" not in os.path.basename(filename)
-            ]
+            png_files = common.filter_files(png_files, [".*overlay.*"])
             common.gdal_translate_png_to_tiff(png_files, translateoptions="-of GTiff")
             logger.info(f"Done moving files for year : {session_year_path}")
             # create orthomoasic
@@ -651,7 +668,7 @@ class Zoo_Model:
         logger.info(f"Otsu Threshold: {use_otsu}")
         # Read in the image filenames as either .npz,.jpg, or .png
         files_to_segment = self.get_files_for_seg(
-            sample_direc, avoid_names=["merged_multispectral"]
+            sample_direc, avoid_patterns=[r".*merged_multispectral.*"]
         )
         logger.info(f"files_to_segment: {files_to_segment}")
         if model_types[0] != "segformer":
