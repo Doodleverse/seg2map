@@ -45,4 +45,4 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           verbose: true
-          password: ${{ secrets.PYPI_TOKEN }}
+          password: ${{ secrets.SEG2MAP_PYPI_TOKEN}}
