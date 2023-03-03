@@ -73,28 +73,14 @@ def get_merged_multispectural(src_path: str) -> str:
     Returns:
     - The path of the merged VRT file.
     """
-    year_name = os.path.basename(src_path)
     tif_files = glob(os.path.join(src_path, "*.tif"))
     tif_files = common.filter_files(tif_files, [r".*merged_multispectral.*"])
     logger.info(
         f"Found {len(tif_files)} GeoTIFF files in {src_path}.\n tif_files: {tif_files}"
     )
-    merged_files = []
-    # old grouping strategy... doesn't really do anything
-    for idx, files in enumerate(common.group_files(tif_files, 6)):
-        filename = f"merged_multispectral_{idx}.vrt"
-        dst_path = os.path.join(src_path, filename)
-        merged_tif = common.merge_files(files, dst_path, create_jpg=False)
-        merged_files.append(merged_tif)
-
-    logger.info(f"merged_files {merged_files}")
     dst_path = os.path.join(src_path, "merged_multispectral.vrt")
-    merged_file = common.merge_files(merged_files, dst_path)
-    # delete intermediate merged tifs and vrts
-    deleted_files = common.delete_files(
-        pattern=".*merged_multispectral_\d+.*", path=src_path
-    )
-    logger.info(f"deleted_files {deleted_files}")
+    merged_file = common.merge_files(tif_files, dst_path)
+
     return merged_file
 
 
@@ -654,6 +640,77 @@ class Zoo_Model:
             logger.info(f"dst_config.json: {dst_file}")
             shutil.copy(config_json_path, dst_file)
 
+    async def async_do_seg(self,
+            semaphore,
+            file_to_seg,
+            model_list,
+            metadatadict,
+            model_type,
+            sample_direc,
+            NCLASSES,
+            N_DATA_BANDS,
+            TARGET_SIZE,
+            TESTTIMEAUG ,
+            WRITE_MODELMETADATA=False,
+            OTSU_THRESHOLD=False,
+            out_dir_name="out"):
+        async with semaphore:
+            logger.info(f"file_to_seg: {file_to_seg}")
+            do_seg(
+                file_to_seg,
+                model_list,
+                metadatadict,
+                model_type,
+                sample_direc,
+                NCLASSES,
+                N_DATA_BANDS,
+                TARGET_SIZE,
+                TESTTIMEAUG,
+                WRITE_MODELMETADATA,
+                OTSU_THRESHOLD,
+                out_dir_name,
+            )
+
+
+    async def perform_segmentations(self,files_to_segment,
+        model_list,
+        metadatadict,
+        model_types,
+        sample_direc,
+        NCLASSES,
+        N_DATA_BANDS,
+        TARGET_SIZE,
+        TESTTIMEAUG ,
+        WRITE_MODELMETADATA=False,
+        OTSU_THRESHOLD=False,
+        out_dir_name="out"):
+
+        semaphore = asyncio.Semaphore(5)
+        coroutines = []
+        for file_to_seg in files_to_segment:
+            coroutines.append(self.async_do_seg(
+                semaphore,
+                file_to_seg,
+                model_list,
+                metadatadict,
+                model_types[0],
+                sample_direc,
+                NCLASSES,
+                N_DATA_BANDS,
+                TARGET_SIZE,
+                TESTTIMEAUG,
+                WRITE_MODELMETADATA,
+                OTSU_THRESHOLD,
+                out_dir_name,
+            ))
+        logger.info(f"coroutines: {coroutines}")
+        await tqdm.asyncio.tqdm.gather(
+                *coroutines,
+                position=1,
+                desc=f"Running Models",
+            )
+
+    @time_func
     def compute_segmentation(
         self,
         sample_direc: str,
@@ -677,6 +734,21 @@ class Zoo_Model:
 
             mixed_precision.set_global_policy("mixed_float16")
         # Compute the segmentation for each of the files
+        # from src.seg2map.downloads import run_async_function
+        # run_async_function(self.perform_segmentations,
+        #                 files_to_segment=files_to_segment,
+        #                 model_list=model_list,
+        #                 metadatadict=metadatadict,
+        #                 model_types=model_types,
+        #                 sample_direc=sample_direc,
+        #                 NCLASSES=self.NCLASSES,
+        #                 N_DATA_BANDS=self.N_DATA_BANDS,
+        #                 TARGET_SIZE=self.TARGET_SIZE,
+        #                 TESTTIMEAUG=use_tta,
+        #                 WRITE_MODELMETADATA=False,
+        #                 OTSU_THRESHOLD=use_otsu,
+        #                 out_dir_name="out",
+        #                         )
         for file_to_seg in tqdm.auto.tqdm(files_to_segment):
             do_seg(
                 file_to_seg,
