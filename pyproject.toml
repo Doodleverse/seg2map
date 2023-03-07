@@ -5,13 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "seg2map"
 dynamic = ["readme"]
-version = "0.0.5"
+version = "0.0.6"
 authors = [
   { name=" Sharon Fitzpatrick", email="sharon.fitzpatrick23@gmail.com" },
 ]
 # find` directive with `include` or `exclude`
 description = "An interactive jupyter notebook for downloading satellite imagery"
 dependencies = [
+  "scikit-image",
   "imageio",
   "transformers",
   "rasterio",
