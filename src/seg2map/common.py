@@ -18,7 +18,7 @@ import concurrent.futures
 from datetime import datetime
 
 # Internal dependencies imports
-from src.seg2map import exception_handler
+from seg2map import exception_handler
 
 from tqdm.auto import tqdm
 import imageio

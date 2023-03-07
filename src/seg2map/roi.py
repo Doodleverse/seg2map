@@ -5,7 +5,7 @@ from functools import lru_cache
 
 # Internal dependencies imports
 from .exceptions import TooLargeError, TooSmallError
-from src.seg2map import common
+from seg2map import common
 
 # External dependencies imports
 import geopandas as gpd

@@ -7,7 +7,7 @@ import platform
 import json
 import logging
 from typing import List, Set
-from src.seg2map import common
+from seg2map import common
 import requests
 import skimage
 import aiohttp
@@ -765,7 +765,7 @@ class Zoo_Model:
                 WRITE_MODELMETADATA=False,
                 OTSU_THRESHOLD=use_otsu,
                 out_dir_name="out",
-                profile=profile
+                profile="meta",
             )
 
     @time_func

@@ -5,9 +5,9 @@ import traceback
 from typing import Union
 
 # internal python imports
-from src.seg2map import exceptions
-from src.seg2map import common
-from src.seg2map.roi import ROI
+from seg2map import exceptions
+from seg2map import common
+from seg2map.roi import ROI
 
 logger = logging.getLogger(__name__)
 

@@ -10,8 +10,8 @@ from glob import glob
 import concurrent.futures
 from datetime import datetime
 
-from src.seg2map import exceptions
-from src.seg2map import common
+from seg2map import exceptions
+from seg2map import common
 
 import asyncio
 import nest_asyncio
@@ -222,8 +222,8 @@ import concurrent.futures
 from datetime import datetime
 import platform
 
-from src.seg2map import exceptions
-from src.seg2map import common
+from seg2map import exceptions
+from seg2map import common
 
 from typing import List, Tuple
 

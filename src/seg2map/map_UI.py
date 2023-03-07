@@ -5,8 +5,8 @@ import logging
 from collections import defaultdict
 
 # internal python imports
-from src.seg2map import exception_handler
-from src.seg2map import common
+from seg2map import exception_handler
+from seg2map import common
 
 # external python imports
 from IPython.display import display

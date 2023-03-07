@@ -8,11 +8,11 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Union
 
-from src.seg2map import common
-from src.seg2map.roi import ROI
-from src.seg2map import exceptions
-from src.seg2map import exception_handler
-from src.seg2map import downloads
+from seg2map import common
+from seg2map.roi import ROI
+from seg2map import exceptions
+from seg2map import exception_handler
+from seg2map import downloads
 
 import geopandas as gpd
 import tqdm
