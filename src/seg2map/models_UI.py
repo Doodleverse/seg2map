@@ -4,8 +4,8 @@ import glob
 import logging
 
 # internal python imports
-from src.seg2map import common
-from src.seg2map import zoo_model
+from seg2map import common
+from seg2map import zoo_model
 
 # external python imports
 import ipywidgets
