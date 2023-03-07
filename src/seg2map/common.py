@@ -371,17 +371,17 @@ def get_merged_multispectural(src_path: str) -> str:
 #         logger.error(e)
 #         raise e
 
-def build_vrt(vrt: str, files: List[str], resample_name: str) -> None:
-    """builds .vrt file which will hold information needed for overlay
-    Args:
-        vrt (:obj:`string`): name of vrt file, which will be created
-        files (:obj:`list`): list of file names for merging
-        resample_name (:obj:`string`): name of resampling method
-    """
+# def build_vrt(vrt: str, files: List[str], resample_name: str) -> None:
+#     """builds .vrt file which will hold information needed for overlay
+#     Args:
+#         vrt (:obj:`string`): name of vrt file, which will be created
+#         files (:obj:`list`): list of file names for merging
+#         resample_name (:obj:`string`): name of resampling method
+#     """
 
-    options = gdal.BuildVRTOptions(srcNodata=0)
-    gdal.BuildVRT(destName=vrt, srcDSOrSrcDSTab=files, options=options)
-    add_pixel_fn(vrt, resample_name)
+#     options = gdal.BuildVRTOptions(srcNodata=0)
+#     gdal.BuildVRT(destName=vrt, srcDSOrSrcDSTab=files, options=options)
+#     add_pixel_fn(vrt, resample_name)
 
 
 def add_pixel_fn(filename: str, resample_name: str) -> None:
@@ -493,12 +493,6 @@ def merge_files(src_files: str, dest_path: str, create_jpg: bool = True) -> str:
         virtual_dataset.FlushCache()
         # reset the dataset object
         virtual_dataset = None
-
-        print(f"dest_path: {dest_path}")
-        logger.info(f"dest_path: {dest_path}")
-        build_vrt(dest_path, src_files, 'max')
-        print(f"after new  build_vrt dest_path: {dest_path}")
-        logger.info(f"after new  build_vrt dest_path: {dest_path}")
 
         # create geotiff (.tiff) from merged vrt file
         tif_path = dest_path.replace(".vrt", ".tif")
@@ -656,7 +650,7 @@ def gdal_translate_jpeg(
         if os.path.exists(jpg_file):
             print(f"File: {jpg_file} already exists")
         else:
-            dst = gdal.Translate(f.replace(".tif", ".jpg"), f, options=translateoptions)
+            dst = gdal.Translate(f.replace(".tif", ".jpg"), f, options= "-of JPEG -co COMPRESS=JPEG -co TFW=YES -co QUALITY=100")
             new_files.append(f.replace(".tif", ".jpg"))
             dst = None  # close and save ds
     return new_files

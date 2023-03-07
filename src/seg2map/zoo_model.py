@@ -554,6 +554,7 @@ class Zoo_Model:
             "otsu": False,
             "tta": False,
         }
+        
 
         session_path = common.create_directory(os.getcwd(), "sessions")
         session_dir = common.create_directory(session_path, session_name)
@@ -577,7 +578,7 @@ class Zoo_Model:
         for year_dir in tqdm.auto.tqdm(
             year_dirs, desc="Running models on each year", leave=False, unit_scale=True
         ):
-            # make a model_settings{year}.json
+            # make a model_settings.json
             model_year_dict = model_dict.copy()
             model_year_dict["sample_direc"] = year_dir
             logger.info(f"model_year_dict: {model_year_dict}")
@@ -721,6 +722,7 @@ class Zoo_Model:
         use_otsu: bool,
     ):
 
+        profile = 'meta' ## predseg + meta 
         logger.info(f"Test Time Augmentation: {use_tta}")
         logger.info(f"Otsu Threshold: {use_otsu}")
         # Read in the image filenames as either .npz,.jpg, or .png
@@ -763,6 +765,7 @@ class Zoo_Model:
                 WRITE_MODELMETADATA=False,
                 OTSU_THRESHOLD=use_otsu,
                 out_dir_name="out",
+                profile=profile
             )
 
     @time_func
