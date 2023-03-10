@@ -38,6 +38,12 @@ class Seg2Map:
         }
         # segmentation layers for each year
         self.seg_layers = []
+        # years: available years to show for segmentations
+        self.years = []
+        # segmentation data associated with each ROI
+        self.roi_segmentations={}
+        # classes : all classes available for segmentations
+        self.classes = []
         # original imagery layers for each year
         self.original_layers = []
         # year that have imagery downloaded
@@ -70,6 +76,32 @@ class Seg2Map:
         self.warning_widget = WidgetControl(widget=self.warning_box, position="topleft")
         self.map.add(self.warning_widget)
 
+
+    def get_roi_segmentations(self):
+        return self.roi_segmentations.copy()
+
+
+    def set_roi_segmentations(self, roi_id: str, years: List[str], classes: List[str]) -> None:
+        """Sets the segmentation information for a given ROI.
+
+        Args:
+            roi_id (str): The ID of the ROI.
+            years (List[str]): The years for which segmentation data is available.
+            classes (List[str]): The classes for which segmentation data is available.
+        """
+        self.roi_segmentations[roi_id] = {"years": years, "classes": classes}
+    
+    def get_classes(self,roi_id=None):
+        if roi_id:
+            return self.get_roi_segmentations()[roi_id]['classes']
+        return self.classes
+
+    def get_years(self,roi_id=None):
+        if roi_id:
+            return self.get_roi_segmentations()[roi_id]['years']
+        return self.years
+        
+
     def get_setttings(self) -> dict:
         logger.info(f"settings: {self.settings}")
 
@@ -99,6 +131,27 @@ class Seg2Map:
         self.map.default_style = {"cursor": "wait"}
 
         session_path = pathlib.Path(session_path)
+
+        years = common.get_years_in_path(session_path)
+        if not years:
+            raise Exception(f"No year directories found in session {session_path}")
+        
+        # load class names from model_setting.json for a first year
+        # available classes are the same for all the years so the year doesn't matter
+        year_path=os.path.join(session_path,years[0])
+        model_settings_path = os.path.join(year_path,"model_settings.json")
+        model_settings = common.read_json_file(model_settings_path)
+        classes = model_settings.get("classes",[])
+        if not classes:
+            raise ValueError(f"model_settings.json is missing classes. {model_settings_path}")
+
+        roi_path = model_settings.get("sample_direc","")
+        if not roi_path:
+            raise ValueError(f"model_settings.json is missing sample_direc. {model_settings_path}")
+        roi_id =  common.extract_roi_id_from_path(roi_path)
+
+        self.set_roi_segmentations(roi_id,years,classes)
+
         for year_path in session_path.glob("*"):
             if not year_path.is_dir():
                 continue

@@ -2,6 +2,7 @@ import os
 import re
 import random
 import string
+from pathlib import Path
 import glob
 import shutil
 import json
@@ -32,6 +33,7 @@ import matplotlib
 from leafmap import check_file_path
 import pandas as pd
 from osgeo import gdal
+from skimage.io import imsave
 
 
 from ipywidgets import ToggleButton
@@ -52,6 +54,45 @@ from io import BytesIO
 import rasterio
 from ipyleaflet import ImageOverlay
 
+
+def extract_roi_id_from_path(path):
+    """
+    Extracts roi_id from a directory name in a given path.
+
+    The function assumes that the directory name is in the format "ID_{roiid}_dates_*".
+
+    Args:
+        path (str): A string representing the path to the directory containing the roi id.
+
+    Returns:
+        A string representing the extracted roi id, or None if the roi id is not found.
+    """
+    start_index = path.find("ID_") + len("ID_")
+    end_index = path.find("_dates_")
+    if start_index != -1 and end_index != -1:
+        return path[start_index:end_index]
+    else:
+        return None
+
+def read_text_file(file_path:str)->List[str]:
+    """
+    Read the contents of a text file and return them as a list of strings.
+
+    Args:
+        file_path: The path to the text file to read.
+
+    Returns:
+        A list of strings representing the lines of text in the file. The list will not include any line ending characters
+        ('\n', '\r', or '\r\n').
+
+    Raises:
+        ValueError: If the file does not exist at the specified file path.
+    """
+    if not os.path.isfile(file_path):
+        raise ValueError(f"{os.path.basename(file_path)} did not exist at {file_path}")
+    with open(file_path) as f:
+        data = f.read().split("\n")
+    return data
 
 def get_rgb_img(img_path: str) -> str:
     """
@@ -92,6 +133,23 @@ def get_bounds(tif_path):
     bounds = [(b.bottom, b.left), (b.top, b.right)]
     return bounds
 
+def get_years_in_path(full_path: Path) -> List[str]:
+    """
+    Return a list of directory names within the given directory that match the pattern of a four-digit year (e.g. '2022').
+    
+    Args:
+        directory: The directory to search for year folders. This can be a string or a Path object.
+    
+    Returns:
+        A list of directory names within the given directory that match the pattern of a four-digit year.
+    """
+    full_path = Path(full_path)
+    years = []
+    with os.scandir(full_path) as entries:
+        for entry in entries:
+            if entry.is_dir() and re.match(r"^\d{4}$", entry.name):
+                years.append(entry.name)
+    return years
 
 def get_image_overlay(tif_path, jpg_path, layer_name: str):
     """
@@ -631,27 +689,35 @@ def gdal_translate_png_to_tiff(
     return new_files
 
 
-def gdal_translate_jpeg(
+def gdal_translate_jpegs(
     files: List[str],
-    translateoptions: str = "-of JPEG -co COMPRESS=JPEG -co TFW=YES -co QUALITY=100",
+    translateoptions: str = None,
+    kwargs = None,
 ):
     """Convert TIFF files to JPEG files using GDAL.
 
     Args:
         files (List[str]): List of file paths to TIFF files to be converted.
-        translateoptions (str, optional): GDAL options for converting TIFF files to JPEG files. Defaults to "-of JPEG -co COMPRESS=JPEG -co TFW=YES -co QUALITY=100".
-
+        translateoptions (str, optional): GDAL options for converting TIFF files to JPEG files.
+        kwargs(dict, optional): dictionary of GDAL options for converting TIFF files to JPEG files. Options located at:
+            https://gdal.org/api/python/osgeo.gdal.html#osgeo.gdal.TranslateOptions
     Returns:
         List[str]: List of file paths to the newly created JPEG files.
     """
     new_files = []
-    for f in files:
-        jpg_file = f.replace(".tif", ".jpg")
+    for file in files:
+        jpg_file = file.replace(".tif", ".jpg")
         if os.path.exists(jpg_file):
-            print(f"File: {jpg_file} already exists")
+            logger.info(f"File: {jpg_file} already exists")
         else:
-            dst = gdal.Translate(f.replace(".tif", ".jpg"), f, options= "-of JPEG -co COMPRESS=JPEG -co TFW=YES -co QUALITY=100")
-            new_files.append(f.replace(".tif", ".jpg"))
+            if kwargs:
+                dst = gdal.Translate(jpg_file, file, **kwargs)
+                new_files.append(jpg_file)
+            elif translateoptions:
+                dst = gdal.Translate(jpg_file, file, options= translateoptions)
+                new_files.append(jpg_file)
+            else:
+                raise ValueError("Must provide value for kwargs or translateoptions.")
             dst = None  # close and save ds
     return new_files
 
@@ -919,6 +985,40 @@ def create_dir(dir_path: str, raise_error=True) -> str:
         os.makedirs(dir_path)
     return dir_path
 
+def write_greylabel_to_png(k: str) -> str:
+    """
+    Given the path of an .npz file containing a 'grey_label' key with an array of uint8 values,
+    writes the array to a PNG file with the same name and location as the .npz file, with the extension
+    changed to .png. Returns the path of the PNG file.
+
+    Parameters:
+    k (str): The path of the .npz file to read from.
+
+    Returns:
+    str: The path of the written PNG file.
+    """
+    png_path=k.replace('.npz','.png')
+    with np.load(k) as data:
+        dat = 1+np.round(data['grey_label'].astype('uint8'))
+    imsave(png_path, dat, check_contrast=False, compression=0)
+    return png_path
+    
+def create_greylabel_pngs(full_path: str) -> List[str]:
+    """
+    Given a directory path, finds all .npz files in the directory, writes the 'grey_label' array of each .npz
+    file to a corresponding PNG file, and returns a list of the paths of the written PNG files.
+
+    Parameters:
+    full_path (str): The path of the directory to search for .npz files.
+
+    Returns:
+    List[str]: A list of the paths of the written PNG files.
+    """
+    png_files=[]
+    npzs = sorted(glob(os.path.join(full_path, '*.npz')))
+    for npz in npzs:
+        png_files.append(write_greylabel_to_png(npz))
+    return png_files
 
 def create_directory(file_path: str, name: str) -> str:
     new_directory = os.path.join(file_path, name)

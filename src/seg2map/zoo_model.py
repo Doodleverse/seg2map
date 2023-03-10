@@ -1,6 +1,5 @@
 import os
 import re
-import glob
 import shutil
 import asyncio
 import platform
@@ -14,6 +13,7 @@ import aiohttp
 import tqdm
 import numpy as np
 from glob import glob
+from osgeo import gdal
 import tqdm.asyncio
 import nest_asyncio
 from skimage.io import imread
@@ -272,7 +272,7 @@ def RGB_to_infrared(
     return output_path
 
 
-async def fetch(session, url: str, save_path: str):
+async def async_download_url(session, url: str, save_path: str):
     model_name = url.split("/")[-1]
     # chunk_size: int = 128
     chunk_size: int = 2048
@@ -300,30 +300,24 @@ async def fetch(session, url: str, save_path: str):
                     fd.write(chunk)
 
 
-async def fetch_all(session, url_dict):
-    tasks = []
-    for save_path, url in url_dict.items():
-        task = asyncio.create_task(fetch(session, url, save_path))
-        tasks.append(task)
-    await tqdm.asyncio.tqdm.gather(*tasks)
-
-
-async def async_download_urls(url_dict: dict) -> None:
+async def async_download_urls(url_dict):
     async with aiohttp.ClientSession() as session:
-        await fetch_all(session, url_dict)
+        tasks = []
+        for save_path, url in url_dict.items():
+            task = asyncio.create_task(async_download_url(session, url, save_path))
+            tasks.append(task)
+        await tqdm.asyncio.tqdm.gather(*tasks)
 
 
 def run_async_download(url_dict: dict):
     logger.info("run_async_download")
     if platform.system() == "Windows":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    logger.info("Scheduling task")
     # apply a nested loop to jupyter's event loop for async downloading
     nest_asyncio.apply()
     # get nested running loop and wait for async downloads to complete
     loop = asyncio.get_running_loop()
     result = loop.run_until_complete(async_download_urls(url_dict))
-    logger.info("Scheduled task")
     logger.info(f"result: {result}")
 
 
@@ -372,10 +366,11 @@ def get_GPU(num_GPU: str) -> None:
 
 def get_url_dict_to_download(models_json_dict: dict) -> dict:
     """Returns dictionary of paths to save files to download
-    and urls to download file
+    and urls to download file. If any of the files already exist then
+    they will not be return in the dictionary.
 
     ex.
-    {'C:\Home\Project\file.json':"https://website/file.json"}
+    {'C:\Home\Project\file.json':'https://website/file.json'}
 
     Args:
         models_json_dict (dict): full path to files and links
@@ -383,15 +378,20 @@ def get_url_dict_to_download(models_json_dict: dict) -> dict:
     Returns:
         dict: full path to files and links
     """
+    # empty dictionary of files to be downloaded
     url_dict = {}
+    # iterate through each full path to each file
     for save_path, link in models_json_dict.items():
+        # if file doesn't exist add to dictionary of links to download
         if not os.path.isfile(save_path):
+            logger.info(f"Did not exist save_path: {save_path}")
             url_dict[save_path] = link
-        json_filepath = save_path.replace("_fullmodel.h5", ".json")
-        if not os.path.isfile(json_filepath):
-            json_link = link.replace("_fullmodel.h5", ".json")
-            url_dict[json_filepath] = json_link
-
+        # check if json file exists for the same model (.h5) and if not add to dictionary of links to download
+        if re.search(r"_fullmodel\.h5$", save_path):
+            json_filepath = save_path.replace("_fullmodel.h5", ".json")
+            if not os.path.isfile(json_filepath):
+                json_link = link.replace("_fullmodel.h5", ".json")
+                url_dict[json_filepath] = json_link
     return url_dict
 
 
@@ -466,7 +466,7 @@ class Zoo_Model:
             files = glob(os.path.join(dir, ".tif"))
             files = common.filter_files(files, avoid_patterns)
             logger.info(f"Translating tifs to jpgs {files}")
-            common.gdal_translate_jpeg(files, translateoptions)
+            common.gdal_translate_jpegs(files, translateoptions)
 
     def create_jpgs_for_tifs(
         self, directories: List[str], avoid_patterns: List["str"] = []
@@ -494,7 +494,7 @@ class Zoo_Model:
                 continue
             print(f"Converting tif files to jpgs in {directory}")
             logger.info(f"Translating tifs to jpgs {tif_files}")
-            common.gdal_translate_jpeg(tif_files, translateoptions)
+            common.gdal_translate_jpegs(tif_files, translateoptions = translateoptions)
 
     def get_tifs_missing_jpgs(
         self, full_path: str, avoid_patterns: List[str] = []
@@ -539,13 +539,21 @@ class Zoo_Model:
         logger.info(f"use_tta: {use_tta}")
 
         self.download_model(model_implementation, model_name)
-        print("")
         weights_list = self.get_weights_list(model_implementation)
 
         # Load the model from the config files
         model, model_list, config_files, model_types = self.get_model(weights_list)
         metadatadict = self.get_metadatadict(weights_list, config_files, model_types)
         logger.info(f"metadatadict: {metadatadict}")
+
+        # read classes from classes.txt from downloaded model directory
+        downloaded_models_path = self.get_downloaded_models_dir()
+        model_directory_path = os.path.abspath(
+            os.path.join(downloaded_models_path, model_name)
+        )
+        class_path= os.path.join(model_directory_path,"classes.txt")
+        classes = common.read_text_file(class_path)
+
         model_dict = {
             "sample_direc": None,
             "use_GPU": use_GPU,
@@ -553,36 +561,59 @@ class Zoo_Model:
             "model_type": model_name,
             "otsu": False,
             "tta": False,
+            "classes": classes,
         }
         
-
         session_path = common.create_directory(os.getcwd(), "sessions")
         session_dir = common.create_directory(session_path, session_name)
 
-        search_pattern = r"config_gdf.*\.geojson"
+        # locate config files
         parent_directory = os.path.dirname(src_directory)
-        print(f"parent_directory : {parent_directory }")
-        config_gdf_path = common.find_config_json(parent_directory, search_pattern)
+        config_gdf_path = common.find_config_json(parent_directory, r"config_gdf.*\.geojson")
         config_json_path = common.find_config_json(parent_directory, r"^config\.json$")
 
         year_dirs = common.get_matching_dirs(src_directory, pattern=r"^\d{4}$")
+        year_tile_dirs = []
+        # for each year
+        for year_dir in tqdm.auto.tqdm(
+            year_dirs, desc="Preparing data", leave=False, unit_scale=True
+        ):
+            original_merged_tif = os.path.join(year_dir,"merged_multispectral.tif")
+            TARGET_SIZE = 768
+            resampleAlg = 'mode'
+            OVERLAP_PX = TARGET_SIZE//2
+            tiles_path = common.create_directory(year_dir, "tiles")
+            # run retile script with system command. retiles merged_multispectral.tif to have overlap
+            cmd = f"python gdal_retile.py -r near -ot Byte -ps {TARGET_SIZE} {TARGET_SIZE} -overlap {OVERLAP_PX} -co 'tiled=YES' -targetDir {tiles_path} {original_merged_tif}"
+            os.system(cmd)
 
-        # create jpgs for all tifs that don't have one
-        self.create_jpgs_for_tifs(
-            year_dirs, avoid_patterns=[".*merged_multispectral.*"]
-        )
+            tif_files = glob(os.path.join(tiles_path,'*.tif'))
+            kwargs = {
+                'format': 'JPEG',
+                'outputType': gdal.GDT_Byte
+            }
+            # create jpgs for new tifs
+            common.gdal_translate_jpegs(tif_files,kwargs = kwargs)
+            # delete tif files
+            for file in tif_files:
+                os.remove(file)
+            year_tile_dirs.append(tiles_path) 
+
+        # # create jpgs for all tifs that don't have one
+        # self.create_jpgs_for_tifs(
+        #     year_tile_dirs, avoid_patterns=[".*merged_multispectral.*"]
+        # )
         # @todo get jpgs in each directory and add to a total to use for the progress bar
-
         logger.info(f"session directory: {session_dir}")
 
-        for year_dir in tqdm.auto.tqdm(
-            year_dirs, desc="Running models on each year", leave=False, unit_scale=True
+        for year_tile_dir in tqdm.auto.tqdm(
+            year_tile_dirs, desc="Running models on each year", leave=False, unit_scale=True
         ):
             # make a model_settings.json
             model_year_dict = model_dict.copy()
-            model_year_dict["sample_direc"] = year_dir
+            model_year_dict["sample_direc"] = year_tile_dir
             logger.info(f"model_year_dict: {model_year_dict}")
-            year_name = os.path.basename(year_dir)
+            year_name = os.path.basename(os.path.dirname(year_tile_dir))
             logger.info(f"year_name: {year_name}")
             session_year_path = common.create_directory(session_dir, year_name)
             logger.info(f"session_year_path: {session_year_path}")
@@ -598,40 +629,8 @@ class Zoo_Model:
                 use_tta,
                 use_otsu,
             )
-
-        for year_dir in tqdm.auto.tqdm(
-            year_dirs, desc="Creating tifs", leave=False, unit_scale=True
-        ):
             # move files from out dir to session directory under folder with year name
-            year_name = os.path.basename(year_dir)
-            outputs_path = os.path.join(src_directory, year_name, "out")
             session_year_path = common.create_directory(session_dir, year_name)
-            logger.info(f"Moving from {outputs_path} files to {session_year_path}")
-            if not os.path.exists(outputs_path):
-                logger.info(f"No model outputs were generated for year {year_name}")
-                print(f"No model outputs were generated for year {year_name}")
-                continue
-
-            common.move_files(outputs_path, session_year_path, delete_src=True)
-            common.rename_files(
-                session_year_path, "*.png", new_name="", replace_name="_predseg"
-            )
-            # copy the xml files associated with each model output
-            xml_files = glob(os.path.join(year_dir, "*aux.xml"))
-            common.copy_files(
-                xml_files, session_year_path, avoid_patterns=[".*merged.*"]
-            )
-            # rename all the xml files
-            common.rename_files(
-                session_year_path, "*aux.xml", new_name=".png", replace_name=".jpg"
-            )
-            png_files = glob(os.path.join(session_year_path, "*png"))
-            png_files = common.filter_files(png_files, [".*overlay.*"])
-            common.gdal_translate_png_to_tiff(png_files, translateoptions="-of GTiff")
-            logger.info(f"Done moving files for year : {session_year_path}")
-            # create orthomoasic
-            merged_multispectural = get_merged_multispectural(session_year_path)
-            logger.info(f"merged_multispectural: {merged_multispectural}")
 
             # copy config files to session directory
             dst_file = os.path.join(session_year_path, "config_gdf.geojson")
@@ -640,6 +639,105 @@ class Zoo_Model:
             dst_file = os.path.join(session_year_path, "config.json")
             logger.info(f"dst_config.json: {dst_file}")
             shutil.copy(config_json_path, dst_file)
+
+            outputs_path = os.path.join(year_tile_dir,'out')
+            logger.info(f"Moving from {outputs_path} files to {session_year_path}")
+            if not os.path.exists(outputs_path):
+                logger.info(f"No model outputs were generated for year {year_name}")
+                print(f"No model outputs were generated for year {year_name}")
+                continue
+
+            # Remove "prob.png" files   
+            _ = [os.remove(k) for k in glob(os.path.join(outputs_path,'*prob.png'))]
+
+            # Remove "overlay.png" files ...
+            _ = [os.remove(k) for k in glob(os.path.join(outputs_path,'*overlay.png'))]
+
+            # Get imgs list
+            predicition_pngs = sorted(glob(os.path.join(year_tile_dir, 'out', '*.png')))
+
+            ## copy the xml files into the 'out' folder
+            xml_files = sorted(glob(os.path.join(year_tile_dir, '*.xml')))
+
+            for k in xml_files:
+                shutil.copyfile(k,k.replace(year_tile_dir,os.path.join(year_tile_dir, 'out')))
+
+            ## rename pngs
+            for prediction in predicition_pngs:
+                new_filename = prediction.replace('_predseg','')
+                if not os.path.isfile(new_filename):
+                    os.rename(prediction,new_filename)
+
+            xml_files = sorted(glob(os.path.join(outputs_path, '*.xml')))
+            ## rename xmls
+            for xml_file in xml_files:
+                new_filename = xml_file.replace('.jpg.aux.xml', '.png.aux.xml')
+                if not os.path.isfile(new_filename):
+                    os.rename(xml_file, new_filename)
+
+            imgsToMosaic = common.create_greylabel_pngs(outputs_path)
+            print(f'{len(imgsToMosaic)} images to mosaic')
+            # copy and name xmls
+            for xml_file in xml_files:
+                shutil.copyfile(xml_file,xml_file.replace('.png','_res.png'))
+
+
+            resampleAlg = 'mode'
+            outVRT = os.path.join(session_year_path, 'Mosaic_greyscale.vrt')
+            outTIF = os.path.join(session_year_path, 'Mosaic_greyscale.tif')
+            # First build vrt for geotiff output
+            vrt_options = gdal.BuildVRTOptions(resampleAlg=resampleAlg)
+            ds = gdal.BuildVRT(outVRT, imgsToMosaic, options=vrt_options)
+            ds.FlushCache()
+            ds = None
+            # then build tiff
+            ds = gdal.Translate(destName=outTIF, creationOptions=["NUM_THREADS=ALL_CPUS", "COMPRESS=LZW", "TILED=YES"], srcDS=outVRT)
+            ds.FlushCache()
+            ds = None
+
+
+
+        # for year_dir in tqdm.auto.tqdm(
+        #     year_dirs, desc="Creating tifs", leave=False, unit_scale=True
+        # ):
+        #     # move files from out dir to session directory under folder with year name
+        #     year_name = os.path.basename(year_dir)
+        #     outputs_path = os.path.join(src_directory, year_name, "out")
+        #     session_year_path = common.create_directory(session_dir, year_name)
+        #     logger.info(f"Moving from {outputs_path} files to {session_year_path}")
+        #     if not os.path.exists(outputs_path):
+        #         logger.info(f"No model outputs were generated for year {year_name}")
+        #         print(f"No model outputs were generated for year {year_name}")
+        #         continue
+
+        #     common.move_files(outputs_path, session_year_path, delete_src=True)
+        #     common.rename_files(
+        #         session_year_path, "*.png", new_name="", replace_name="_predseg"
+        #     )
+        #     # copy the xml files associated with each model output
+        #     xml_files = glob(os.path.join(year_dir, "*aux.xml"))
+        #     common.copy_files(
+        #         xml_files, session_year_path, avoid_patterns=[".*merged.*"]
+        #     )
+        #     # rename all the xml files
+        #     common.rename_files(
+        #         session_year_path, "*aux.xml", new_name=".png", replace_name=".jpg"
+        #     )
+        #     png_files = glob(os.path.join(session_year_path, "*png"))
+        #     png_files = common.filter_files(png_files, [".*overlay.*"])
+        #     common.gdal_translate_png_to_tiff(png_files, translateoptions="-of GTiff")
+        #     logger.info(f"Done moving files for year : {session_year_path}")
+        #     # create orthomoasic
+        #     merged_multispectural = get_merged_multispectural(session_year_path)
+        #     logger.info(f"merged_multispectural: {merged_multispectural}")
+
+        #     # copy config files to session directory
+        #     dst_file = os.path.join(session_year_path, "config_gdf.geojson")
+        #     logger.info(f"dst_config_gdf: {dst_file}")
+        #     shutil.copy(config_gdf_path, dst_file)
+        #     dst_file = os.path.join(session_year_path, "config.json")
+        #     logger.info(f"dst_config.json: {dst_file}")
+        #     shutil.copy(config_json_path, dst_file)
 
     async def async_do_seg(self,
             semaphore,
@@ -721,14 +819,11 @@ class Zoo_Model:
         use_tta: bool,
         use_otsu: bool,
     ):
-
-        profile = 'meta' ## predseg + meta 
+ 
         logger.info(f"Test Time Augmentation: {use_tta}")
         logger.info(f"Otsu Threshold: {use_otsu}")
         # Read in the image filenames as either .npz,.jpg, or .png
-        files_to_segment = self.get_files_for_seg(
-            sample_direc, avoid_patterns=[r".*merged_multispectral.*"]
-        )
+        files_to_segment = self.get_files_for_seg(sample_direc)
         logger.info(f"files_to_segment: {files_to_segment}")
         if model_types[0] != "segformer":
             ### mixed precision
@@ -985,74 +1080,92 @@ class Zoo_Model:
             model_choice (str): 'BEST' or 'ENSEMBLE'
             dataset_id (str): name of model followed by underscore zenodo_id'name_of_model_zenodoid'
         """
+        # Extract the Zenodo ID from the dataset ID
         zenodo_id = dataset_id.split("_")[-1]
-        root_url = "https://zenodo.org/api/records/" + zenodo_id
-        # read raw json and get list of available files in zenodo release
+
+        # Construct the URL for the Zenodo release
+        root_url = f"https://zenodo.org/api/records/{zenodo_id}"
+
+        # Retrieve the JSON data for the Zenodo release
         response = requests.get(root_url)
-        json_content = json.loads(response.text)
-        # logger.info(f"json_content {json_content}")
+        response.raise_for_status()
+        json_content = response.json()
         files = json_content["files"]
 
+        # Create a directory to hold the downloaded models
         downloaded_models_path = self.get_downloaded_models_dir()
-        # directory to hold specific model referenced by dataset_id
         self.weights_direc = os.path.abspath(
             os.path.join(downloaded_models_path, dataset_id)
         )
-        if not os.path.exists(self.weights_direc):
-            os.mkdir(self.weights_direc)
-
+        os.makedirs(self.weights_direc, exist_ok=True)
         logger.info(f"self.weights_direc:{self.weights_direc}")
         print(f"\n Model located at: {self.weights_direc}")
+
         models_json_dict = {}
         if model_choice.upper() == "BEST":
-            # retrieve best model text file
-            best_model_json = [f for f in files if f["key"] == "BEST_MODEL.txt"][0]
-            if len(best_model_json) == 0:
-                raise Exception(f"Cannot find BEST_MODEL.txt at {root_url}")
-            logger.info(f"list of best_model_txt: {best_model_json}")
-            best_model_txt_path = self.weights_direc + os.sep + "BEST_MODEL.txt"
-            logger.info(f"BEST: best_model_txt_path : {best_model_txt_path }")
+            best_model_json = next((f for f in files if f["key"] == "BEST_MODEL.txt"), None)
+            if best_model_json is None:
+                raise ValueError(f"Cannot find BEST_MODEL.txt at {root_url}")
+            logger.info(f"BEST_MODEL.txt: {best_model_json}")
 
-            # if best BEST_MODEL.txt file not exist then download it
-            if not os.path.isfile(best_model_txt_path):
-                download_url(
-                    best_model_json["links"]["self"],
-                    best_model_txt_path,
-                )
-            # read contents of BEST_MODEL.txt
-            with open(best_model_txt_path) as f:
-                filename = f.read()
+            best_model_path = os.path.join(self.weights_direc, "BEST_MODEL.txt")
+            logger.info(f"best_model_path : {best_model_path}")
+
+            # if BEST_MODEL.txt file not exist download it
+            if not os.path.isfile(best_model_path):
+                download_url(best_model_json["links"]["self"], best_model_path)
+        
+            # read filename of the best model in BEST_MODEL.txt
+            with open(best_model_path, "r") as f:
+                filename = f.read().strip()
+
+            # make sure the best model file is online and
+            model_json = next((f for f in files if f["key"] == filename), None)
+            if model_json is None:
+                raise ValueError(f"Cannot find file '{filename}' in {root_url}. Raise an Issue on Github.")
+            logger.info(f"Model: {model_json}")
 
             # check if json and h5 file in BEST_MODEL.txt exist
             model_json = [f for f in files if f["key"] == filename][0]
             # path to save model
-            outfile = self.weights_direc + os.sep + filename
-            logger.info(f"BEST: outfile: {outfile}")
+            model_path = os.path.join(self.weights_direc, filename)
+            logger.info(f"model_path for BEST_MODEL.txt: {model_path}")
+
             # path to save file and json data associated with file saved to dict
-            models_json_dict[outfile] = model_json["links"]["self"]
-            url_dict = get_url_dict_to_download(models_json_dict)
-            # if any files are not found locally download them asynchronous
-            if url_dict != {}:
-                run_async_download(url_dict)
+            models_json_dict[model_path] = model_json["links"]["self"]
         elif model_choice.upper() == "ENSEMBLE":
             # get list of all models
             all_models = [f for f in files if f["key"].endswith(".h5")]
-            if len(all_models) == 0:
-                raise Exception(f"Cannot find any .h5 files at {root_url}")
-            logger.info(f"all_models : {all_models }")
+            if not all_models:
+                raise ValueError(f"No .h5 files found at {root_url}")
+            logger.info(f"All models: {all_models}")
+
             # check if all h5 files in files are in self.weights_direc
             for model_json in all_models:
-                outfile = (
-                    self.weights_direc
-                    + os.sep
-                    + model_json["links"]["self"].split("/")[-1]
-                )
-                logger.info(f"ENSEMBLE: outfile: {outfile}")
-                # path to save file and json data associated with file saved to dict
-                models_json_dict[outfile] = model_json["links"]["self"]
-            logger.info(f"models_json_dict: {models_json_dict}")
-            url_dict = get_url_dict_to_download(models_json_dict)
-            logger.info(f"URLs to download: {url_dict}")
-            # if any files are not found locally download them asynchronous
-            if url_dict != {}:
-                run_async_download(url_dict)
+                model_path = os.path.join(self.weights_direc, model_json["links"]["self"].split("/")[-1])
+                if not os.path.isfile(model_path):
+                    download_url(model_json["links"]["self"], model_path)
+
+                logger.info(f"ENSEMBLE: model_path: {model_path}")
+                # save url to download ensemble models. each url is identified by path to save model
+                models_json_dict[model_path] = model_json["links"]["self"]
+        else:
+            raise ValueError(f"Invalid model_choice '{model_choice}'")
+
+        # make sure classes.txt file is downloaded
+        filename="classes.txt"
+        classes_file_json = next((f for f in files if f["key"] == filename), None)
+        if classes_file_json is None:
+            raise ValueError(f"Cannot find {filename} at {root_url}")
+        
+        file_path = os.path.join(self.weights_direc, filename)
+        if not os.path.isfile(file_path):
+            models_json_dict[file_path] = classes_file_json["links"]["self"]
+
+        logger.info(f"models_json_dict: {models_json_dict}")
+        # filter through the files and keep only the files that haven't been downloaded
+        url_dict = get_url_dict_to_download(models_json_dict)
+        logger.info(f"URLs to download: {url_dict}")
+        # if any files are not found locally download them asynchronous
+        if url_dict != {}:
+            run_async_download(url_dict)
