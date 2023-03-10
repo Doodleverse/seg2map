@@ -688,6 +688,24 @@ def gdal_translate_png_to_tiff(
             dst = None  # close and save ds
     return new_files
 
+def move_files_resurcively(src,dest):
+    """Move all files and subdirectories from the source directory to the destination directory recursively.
+
+    Args:
+        source_dir (str): The path to the source directory.
+        destination_dir (str): The path to the destination directory.
+
+    Returns:
+        None
+    """
+    if not os.path.isdir(src):
+        os.makedirs(src)
+    if not os.path.isdir(dest):
+        os.makedirs(dest)
+    # Move all files and subdirectories from the source directory to the destination directory
+    for entry in os.scandir(src):
+        # Move the entry to the destination directory
+        shutil.move(entry.path, os.path.join(dest, entry.name))
 
 def gdal_translate_jpegs(
     files: List[str],

@@ -597,6 +597,9 @@ class Zoo_Model:
             # delete tif files
             for file in tif_files:
                 os.remove(file)
+
+            if len(os.listdir(tiles_path)) == 0:
+                continue
             year_tile_dirs.append(tiles_path) 
 
         # # create jpgs for all tifs that don't have one
@@ -647,6 +650,7 @@ class Zoo_Model:
                 print(f"No model outputs were generated for year {year_name}")
                 continue
 
+            
             # Remove "prob.png" files   
             _ = [os.remove(k) for k in glob(os.path.join(outputs_path,'*prob.png'))]
 
@@ -658,9 +662,10 @@ class Zoo_Model:
 
             ## copy the xml files into the 'out' folder
             xml_files = sorted(glob(os.path.join(year_tile_dir, '*.xml')))
-
-            for k in xml_files:
-                shutil.copyfile(k,k.replace(year_tile_dir,os.path.join(year_tile_dir, 'out')))
+            for xml_file in xml_files:
+                new_filename = xml_file.replace(year_tile_dir,outputs_path)
+                if not os.path.isfile(new_filename):
+                    shutil.copyfile(xml_file,new_filename)
 
             ## rename pngs
             for prediction in predicition_pngs:
@@ -675,13 +680,20 @@ class Zoo_Model:
                 if not os.path.isfile(new_filename):
                     os.rename(xml_file, new_filename)
 
+            # @todo create_greyscale_tiff
             imgsToMosaic = common.create_greylabel_pngs(outputs_path)
+            # xml files have  been renamed to have .png
+            xml_files = sorted(glob(os.path.join(outputs_path, '*.xml')))
             print(f'{len(imgsToMosaic)} images to mosaic')
             # copy and name xmls
             for xml_file in xml_files:
-                shutil.copyfile(xml_file,xml_file.replace('.png','_res.png'))
+                new_filename = xml_file.replace('.png','_res.png')
+                if not os.path.isfile(new_filename):
+                    shutil.copyfile(xml_file,new_filename)
 
 
+            # create greyscale tif in session directory
+            # generic vrt function
             resampleAlg = 'mode'
             outVRT = os.path.join(session_year_path, 'Mosaic_greyscale.vrt')
             outTIF = os.path.join(session_year_path, 'Mosaic_greyscale.tif')
@@ -694,6 +706,13 @@ class Zoo_Model:
             ds = gdal.Translate(destName=outTIF, creationOptions=["NUM_THREADS=ALL_CPUS", "COMPRESS=LZW", "TILED=YES"], srcDS=outVRT)
             ds.FlushCache()
             ds = None
+
+            # move segmentations to session directory
+            dest =common.create_directory(session_year_path,'tiles')
+            common.move_files_resurcively(src=year_tile_dir, dest=dest)
+            # remove empty tiles directory
+            if os.path.basename(year_tile_dir).lower() == "tiles":
+                os.rmdir(year_tile_dir)
 
 
 
