@@ -1,5 +1,5 @@
 import os
-from typing import Set, Union, List
+from typing import Set, Tuple, Union, List
 from base64 import b64encode
 from PIL import Image
 from io import BytesIO
@@ -10,27 +10,44 @@ from PIL import Image
 from seg2map import common
 
 # convert greyscale tif to png files that can be rendered on the map
-file =r'C:\1_USGS\4_seg2map\seg2map\data\fresh_downloads\ID_NVBbrh_dates_2010-01-01_to_2013-12-31\multiband\2010\Mosaic.tif'
-save_path=r'C:\1_USGS\4_seg2map\seg2map'
+# file =r'C:\1_USGS\4_seg2map\seg2map\data\fresh_downloads\ID_NVBbrh_dates_2010-01-01_to_2013-12-31\multiband\2010\Mosaic.tif'
+# save_path=r'C:\1_USGS\4_seg2map\seg2map'
 
-def load_classes_on_map(file,save_path:str):
+def get_class_masks_overlay(tif_file:str, mask_output_dir:str, classes:List[str],year:str) -> List:
+    """
+    Given a path to a TIFF file, create binary masks for each class in the file and
+    return a list of image overlay layers that can be used to display the masks over
+    the original image.
+
+    Args:
+        tif_file (str): The path to the input TIFF file.
+        mask_output_dir (str): The path to the directory where the output mask images
+            will be saved.
+        classes (List[str]): A list of class names to include in the masks.
+        year(str): year that tif was created
+
+    Returns:
+        A list of image overlay layers, one for each class mask.
+    """
     # get bounds of tif 
-    bounds = common.get_bounds(file)
+    bounds = common.get_bounds(tif_file)
+    
     # get class names to create class mapping
-    names = ['bareland', 'rangeland', 'development', 'road', 'tree', 'water', 'agricultural', 'building', 'nodata']
-    class_mapping = get_class_mapping(names)
-    # save mask for each class in tif as a separate png
-    # i should also include where these class masks should be saved
-    class_masks = save_class_masks(file,class_mapping,save_path)
-    # for each class mask png create an image overlay
-    # combine mask name with save path
+    class_mapping = get_class_mapping(classes)
+    
+    # generate binary masks for each class in tif as a separate PNG in mask_output_dir
+    class_masks = generate_class_masks(tif_file, class_mapping, mask_output_dir)
+    
+    # for each class mask PNG, create an image overlay
+    layers = []
     for filename in class_masks:
-        file_path = os.path.join(save_path,filename)
-        print(filename)
-        print(type(filename))
+        file_path = os.path.join(mask_output_dir, filename)
+        new_filename=filename.split(".")[0] + "_"+year
         # combine mask name with save path
-        image_overlay=get_overlay_for_image(file_path,bounds,filename.split(".")[0])
-        # seg2map.map.add_layer(image_overlay)
+        image_overlay=get_overlay_for_image(file_path, bounds,new_filename,file_format='png')
+        layers.append(image_overlay)
+        
+    return layers
 
 
 def get_class_mapping(names:List[str])->dict:
@@ -61,24 +78,54 @@ def get_class_mapping(names:List[str])->dict:
         class_mapping[i] = name
     return class_mapping
 
-def save_class_masks(file:str,class_mapping:dict,save_path:str):
+def generate_color_map(num_colors: int) -> dict:
+    """
+    Generate a color map for the specified number of colors.
+
+    Args:
+        num_colors (int): The number of colors needed.
+
+    Returns:
+        A dictionary containing a color map for the specified number of colors.
+    """
+    import colorsys
+
+    # Generate a list of equally spaced hues
+    hues = [i / num_colors for i in range(num_colors)]
+
+    # Convert each hue to an RGB color tuple
+    rgb_colors = [colorsys.hsv_to_rgb(h, 1.0, 1.0) for h in hues]
+
+    # Scale each RGB value to the range [0, 255] and add to the color map
+    color_map = {}
+    for i, color in enumerate(rgb_colors):
+        color_map[i] = tuple(int(255 * c) for c in color)
+
+    return color_map
+
+
+def generate_class_masks(file:str,class_mapping:dict,save_path:str)->List:
+    """
+    Create binary masks for each class in an input grayscale image and save them as PNG files
+    in the specified directory.
+
+    Args:
+        file (str): The path to the input grayscale image file.
+        class_mapping (dict): A dictionary mapping unique color values to class names.
+        save_dir_path (str): The path to the directory where the output mask images will be saved.
+
+    Returns:
+        A list of filenames of the saved mask images.
+
+    Raises:
+        OSError: If there was an error accessing or saving the image files.
+    """
     img_gray=Image.open(file)
     # unique colors: [(count,unique_color_value)....]
+    # each pixel's color in img_gray can be one of the values 0,1,2,3....
     unique_colors=img_gray.getcolors()
-    # Create a new color map for the masked pixels
-    color_map = {
-        0: (255, 0, 0),     # red
-        1: (0, 255, 0),     # green
-        2: (0, 0, 255),     # blue
-        3: (255, 255, 0),   # yellow
-        4: (255, 0, 255),   # magenta
-        5: (0, 255, 255),   # cyan
-        6: (128, 0, 0),     # maroon
-        7: (0, 128, 0),     # dark green
-        8: (0, 0, 128),     # navy
-        9: (128, 128, 128), # gray
-        10: (255, 255, 255) # white
-    }
+    # create a color for each class
+    color_map = generate_color_map(len(unique_colors))
     # for each unique color in file create a mask with the rest of the pixels being transparent
     files_saved=[]
     for i, (count, color) in enumerate(unique_colors):
@@ -119,21 +166,40 @@ def get_uri(data: bytes,scheme: str = "image/png") -> str:
     """
     return f"data:{scheme};base64,{encodebytes(data).decode('ascii')}"
 
-def get_overlay_for_image(image,bounds,name:str):
+def get_overlay_for_image(image_path: str, bounds: Tuple, name: str, file_format: str) -> ImageOverlay:
+    """Create an ImageOverlay object for an image file.
+
+    Args:
+        image_path (str): The path to the image file.
+        bounds (Tuple): The bounding box for the image overlay.
+        name (str): The name of the image overlay.
+        file_format (str): The format of the image file, either 'png', 'jpg', or 'jpeg'.
+
+    Returns:
+        An ImageOverlay object.
+    """
+    if file_format.lower() not in ['png', 'jpg', 'jpeg']:
+        raise ValueError(f"{file_format} is not recognized. Allowed file formats are: png, jpg, and jpeg.")
+
+    if file_format.lower() == 'png':
+        file_format='png'
+        scheme ="image/png"
+    elif file_format.lower() == 'jpg' or file_format.lower() == 'jpeg':
+        file_format='jpeg'
+        scheme ="image/jpeg"
+
     # use pillow to open the image
-    img_data = Image.open(image)
+    img_data = Image.open(image_path)
     # convert image to bytes
-    img_bytes=convert_image_to_bytes(img_data,file_format='png')
+    img_bytes=convert_image_to_bytes(img_data,file_format)
     # create a uri from bytes
-    uri = get_uri(img_bytes,"image/png")
+    uri = get_uri(img_bytes,scheme)
     # create image overlay from uri
     return ImageOverlay(url=uri, bounds=bounds, name=name)
 
 def convert_image_to_bytes(image,file_format:str='png'):
     file_format = "PNG" if file_format.lower() == 'png' else "JPEG"
-    print(file_format)
     f = BytesIO()
     image.save(f, file_format)
-
     # get the bytes from the bytesIO object
     return f.getvalue()

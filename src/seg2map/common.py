@@ -20,6 +20,7 @@ from datetime import datetime
 
 # Internal dependencies imports
 from seg2map import exception_handler
+from seg2map import map_functions
 
 from tqdm.auto import tqdm
 import imageio
@@ -151,7 +152,7 @@ def get_years_in_path(full_path: Path) -> List[str]:
                 years.append(entry.name)
     return years
 
-def get_image_overlay(tif_path, jpg_path, layer_name: str):
+def get_image_overlay(tif_path, image_path, layer_name: str,convert_RGB:bool=True,file_format:str='png'):
     """
     Creates an image overlay for a GeoTIFF file using a JPG image.
 
@@ -164,15 +165,12 @@ def get_image_overlay(tif_path, jpg_path, layer_name: str):
     ImageOverlay: An image overlay for the GeoTIFF file.
     """
     bounds = get_bounds(tif_path)
-    RGB_path = get_rgb_img(jpg_path)
-    image = Image.open(RGB_path)
-    f = BytesIO()
-    image.save(f, "JPEG")
+    # convert image to RGB 
+    if convert_RGB:
+        image_path = get_rgb_img(image_path)
 
-    data = b64encode(f.getvalue())
-    data = data.decode("ascii")
-    url = "data:image/JPEG;base64," + data
-    image_overlay = ImageOverlay(url=url, bounds=bounds, name=layer_name)
+    img_data = Image.open(image_path)
+    image_overlay=map_functions.get_overlay_for_image(img_data,bounds,layer_name,file_format=file_format)
     return image_overlay
 
 
@@ -342,9 +340,13 @@ def create_merged_multispectural_for_ROIs(roi_paths: List[str]) -> None:
         year_dirs = get_matching_dirs(roi_path, pattern=r"^\d{4}$")
         for year_path in year_dirs:
             glob_str = os.path.join(year_path, "*merged_multispectral.jpg")
+            # A merged jpg has already been createed
             if len(glob(glob_str)) >= 1:
+                logger.warning(f"*merged_multispectral.jpg already exists {year_path}")
                 continue
+            #no tifs exist to merge
             if len(os.listdir(year_path)) == 0:
+                logger.warning(f"*{year_path} contains no tifs")
                 continue
             try:
                 get_merged_multispectural(year_path)
@@ -366,164 +368,19 @@ def get_merged_multispectural(src_path: str) -> str:
     Returns:
     - The path of the merged VRT file.
     """
+    # get all the unmerged tif files
     tif_files = glob(os.path.join(src_path, "*.tif"))
     tif_files = [file for file in tif_files if "merged_multispectral" not in file]
 
     logger.info(f"Found {len(tif_files)} GeoTIFF files in {src_path}")
     logger.info(f"tif_files: {tif_files}")
 
-    dst_path = os.path.join(src_path, "merged_multispectral.vrt")
-    merged_file = merge_files(tif_files, dst_path, create_jpg=False)
+    vrt_path = os.path.join(src_path, "merged_multispectral.vrt")
+    merged_file = merge_files(tif_files, vrt_path, create_jpg=True)
     return merged_file
 
-# def merge_files(src_files: str, dest_path: str, create_jpg: bool = True) -> str:
-#     """Merge a list of GeoTIFF files into a single JPEG file.
 
-#     Args:
-#     src_files (List[str]): A list of file paths to be merged.
-#     dest_path (str): The path to the output JPEG file.
-
-#     Returns:
-#     str: The path to the output JPEG file.
-#     """
-#     # Check if path to source exists
-#     for file in src_files:
-#         if not os.path.exists(file):
-#             raise FileNotFoundError(f"{file} not found.")
-#     try:
-#         ## create vrt(virtual world format) file
-#         # Create VRT file
-#         vrt_options = gdal.BuildVRTOptions(
-#             resampleAlg="average", srcNodata=0, VRTNodata=0
-#         )
-#         # creates a virtual world file using all the tifs and overwrites any pre-existing .vrt
-#         virtual_dataset = gdal.BuildVRT(dest_path, src_files, options=vrt_options)
-#         # flushing the cache causes the vrt file to be created
-#         virtual_dataset.FlushCache()
-#         # reset the dataset object
-#         virtual_dataset = None
-
-#         # create geotiff (.tiff) from merged vrt file
-#         tif_path = dest_path.replace(".vrt", ".tif")
-#         virtual_dataset = gdal.Translate(
-#             tif_path,
-#             creationOptions=["COMPRESS=LZW", "TILED=YES"],
-#             srcDS=dest_path,
-#         )
-#         virtual_dataset.FlushCache()
-#         virtual_dataset = None
-
-#         if create_jpg:
-#             # convert .vrt to .jpg file
-#             virtual_dataset = gdal.Translate(
-#                 dest_path.replace(".vrt", ".jpg"),
-#                 creationOptions=["WORLDFILE=YES", "QUALITY=100"],
-#                 srcDS=dest_path.replace(".vrt", ".tif"),
-#             )
-#             virtual_dataset.FlushCache()
-#             virtual_dataset = None
-
-#         return dest_path
-#     except Exception as e:
-#         print(e)
-#         logger.error(e)
-#         raise e
-
-# def build_vrt(vrt: str, files: List[str], resample_name: str) -> None:
-#     """builds .vrt file which will hold information needed for overlay
-#     Args:
-#         vrt (:obj:`string`): name of vrt file, which will be created
-#         files (:obj:`list`): list of file names for merging
-#         resample_name (:obj:`string`): name of resampling method
-#     """
-
-#     options = gdal.BuildVRTOptions(srcNodata=0)
-#     gdal.BuildVRT(destName=vrt, srcDSOrSrcDSTab=files, options=options)
-#     add_pixel_fn(vrt, resample_name)
-
-
-def add_pixel_fn(filename: str, resample_name: str) -> None:
-    """inserts pixel-function into vrt file named 'filename'
-    Args:
-        filename (:obj:`string`): name of file, into which the function will be inserted
-        resample_name (:obj:`string`): name of resampling method
-    """
-
-    header = """  <VRTRasterBand dataType="Byte" band="1" subClass="VRTDerivedRasterBand">"""
-    contents = """
-    <PixelFunctionType>{0}</PixelFunctionType>
-    <PixelFunctionLanguage>Python</PixelFunctionLanguage>
-    <PixelFunctionCode><![CDATA[{1}]]>
-    </PixelFunctionCode>"""
-
-    lines = open(filename, 'r').readlines()
-    lines[3] = header  # FIX ME: 3 is a hand constant
-    lines.insert(4, contents.format(resample_name,
-                                    get_resample(resample_name)))
-    open(filename, 'w').write("".join(lines))
-
-
-def get_resample(name: str) -> str:
-    """retrieves code for resampling method
-    Args:
-        name (:obj:`string`): name of resampling method
-    Returns:
-        method :obj:`string`: code of resample method
-    """
-
-    methods = {
-        "first":
-        """
-import numpy as np
-def first(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize,raster_ysize, buf_radius, gt, **kwargs):
-    y = np.ones(in_ar[0].shape)
-    for i in reversed(range(len(in_ar))):
-        mask = in_ar[i] == 0
-        y *= mask
-        y += in_ar[i]
-    np.clip(y,0,255, out=out_ar)
-""",
-        "last":
-        """
-import numpy as np
-def last(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize,raster_ysize, buf_radius, gt, **kwargs):
-    y = np.ones(in_ar[0].shape)
-    for i in range(len(in_ar)):
-        mask = in_ar[i] == 0
-        y *= mask
-        y += in_ar[i]
-    np.clip(y,0,255, out=out_ar)
-""",
-        "max":
-        """
-import numpy as np
-def max(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize,raster_ysize, buf_radius, gt, **kwargs):
-    y = np.max(in_ar, axis=0)
-    np.clip(y,0,255, out=out_ar)
-""",
-        "average":
-        """
-import numpy as np
-def average(in_ar, out_ar, xoff, yoff, xsize, ysize, raster_xsize,raster_ysize, buf_radius, gt, **kwargs):
-    div = np.zeros(in_ar[0].shape)
-    for i in range(len(in_ar)):
-        div += (in_ar[i] != 0)
-    div[div == 0] = 1
-    
-    y = np.sum(in_ar, axis = 0, dtype = 'uint16')
-    y = y / div
-    
-    np.clip(y,0,255, out = out_ar)
-"""}
-
-    if name not in methods:
-        raise ValueError(
-            "ERROR: Unrecognized resampling method (see documentation): '{}'.".
-            format(name))
-
-    return methods[name]
-
-def merge_files(src_files: str, dest_path: str, create_jpg: bool = True) -> str:
+def merge_files(src_files: str, vrt_path: str, create_jpg: bool = True) -> str:
     """Merge a list of GeoTIFF files into a single JPEG file.
 
     Args:
@@ -543,21 +400,21 @@ def merge_files(src_files: str, dest_path: str, create_jpg: bool = True) -> str:
         vrt_options = gdal.BuildVRTOptions(
             resampleAlg="mode", srcNodata=0, VRTNodata=0
         )
-        print(f"dest_path: {dest_path}")
-        logger.info(f"dest_path: {dest_path}")
+        print(f"dest_path: {vrt_path}")
+        logger.info(f"dest_path: {vrt_path}")
         # creates a virtual world file using all the tifs and overwrites any pre-existing .vrt
-        virtual_dataset = gdal.BuildVRT(dest_path, src_files, options=vrt_options)
+        virtual_dataset = gdal.BuildVRT(vrt_path, src_files, options=vrt_options)
         # flushing the cache causes the vrt file to be created
         virtual_dataset.FlushCache()
         # reset the dataset object
         virtual_dataset = None
 
         # create geotiff (.tiff) from merged vrt file
-        tif_path = dest_path.replace(".vrt", ".tif")
+        tif_path = vrt_path.replace(".vrt", ".tif")
         virtual_dataset = gdal.Translate(
             tif_path,
             creationOptions=["COMPRESS=LZW", "TILED=YES"],
-            srcDS=dest_path,
+            srcDS=vrt_path,
         )
         virtual_dataset.FlushCache()
         virtual_dataset = None
@@ -565,14 +422,14 @@ def merge_files(src_files: str, dest_path: str, create_jpg: bool = True) -> str:
         if create_jpg:
             # convert .vrt to .jpg file
             virtual_dataset = gdal.Translate(
-                dest_path.replace(".vrt", ".jpg"),
+                vrt_path.replace(".vrt", ".jpg"),
                 creationOptions=["WORLDFILE=YES", "QUALITY=100"],
-                srcDS=dest_path.replace(".vrt", ".tif"),
+                srcDS=tif_path,
             )
             virtual_dataset.FlushCache()
             virtual_dataset = None
 
-        return dest_path
+        return vrt_path
     except Exception as e:
         print(e)
         logger.error(e)
@@ -609,58 +466,6 @@ def delete_files(pattern, path):
                 deleted_files.append(full_path)
 
     return deleted_files
-
-
-# def merge_tifs(src_dir: str, dest_dir: str) -> str:
-#     # Check if path to destination directory exists
-#     if not os.path.exists(dest_dir):
-#         raise FileNotFoundError(f"{dest_dir} not found.")
-#     # Check if path to source exists
-#     if not os.path.exists(src_dir):
-#         raise FileNotFoundError(f"{src_dir} not found.")
-#     try:
-
-#         # Create a list of tif files in source directory
-#         tif_files = glob(os.path.join(src_dir, "*.tif"))
-#         if not tif_files:
-#             raise FileNotFoundError(f"No tif files found in {src_dir}.")
-
-#         vrt_path = os.path.join(dest_dir, "merged_multispectral.vrt")
-#         logger.info(f"vrt_path: {vrt_path}")
-
-#         ## create vrt(virtual world format) file
-#         vrtoptions = gdal.BuildVRTOptions(
-#             resampleAlg="average", srcNodata=0, VRTNodata=0
-#         )
-#         # creates a virtual world file using all the tifs and overwrites any pre-existing .vrt
-#         virtual_dataset = gdal.BuildVRT(vrt_path, tif_files, options=vrtoptions)
-#         # flushing the cache causes the vrt file to be created
-#         virtual_dataset.FlushCache()
-#         # reset the dataset object
-#         virtual_dataset = None
-
-#         # create geotiff (.tiff) from merged vrt file
-#         virtual_dataset = gdal.Translate(
-#             vrt_path.replace(".vrt", ".tif"),
-#             creationOptions=["COMPRESS=LZW", "TILED=YES"],
-#             srcDS=vrt_path,
-#         )
-#         virtual_dataset.FlushCache()
-#         virtual_dataset = None
-
-#         # convert .vrt to .jpg file
-#         virtual_dataset = gdal.Translate(
-#             vrt_path.replace(".vrt", ".jpg"),
-#             creationOptions=["WORLDFILE=YES", "QUALITY=100"],
-#             srcDS=vrt_path.replace(".vrt", ".tif"),
-#         )
-#         virtual_dataset.FlushCache()
-#         virtual_dataset = None
-#         return vrt_path
-#     except Exception as e:
-#         print(e)
-#         logger.error(e)
-#         raise e
 
 
 def gdal_translate_png_to_tiff(
