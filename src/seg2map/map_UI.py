@@ -236,7 +236,10 @@ class UI:
             readout_format=".2f",
         )
 
-        years = ["2010", "2012", "2013", "2015"]
+        default_years=['2010']
+        years = self.seg2map.get_years()
+        if len(years)== 0: 
+            years = default_years
         self.year_slider = SelectionSlider(
             options=years,
             value=years[0],
@@ -249,29 +252,19 @@ class UI:
 
         def year_slider_changed(change):
             year = self.year_slider.value
-            for layer in self.seg2map.original_layers + self.seg2map.seg_layers:
-                # if year in layer name and layer not on map
-                if (
-                    year in layer.name
-                    and self.seg2map.map.find_layer(layer.name) is None
-                ):
-                    self.seg2map.map.add_layer(layer)
-                if year not in layer.name and layer.name != "ROI":
-                    if layer in self.seg2map.map.layers:
-                        self.seg2map.map.remove_layer(layer)
+            seg_layers = self.seg2map.get_seg_layers()
+            original_layers = self.seg2map.get_original_layers()
+            # order matters: original layers must be before seg layer otherwise so segmentations will appear on to of image
+            layers =  original_layers + seg_layers
+            self.seg2map.load_layers_by_year(layers,year)
 
         self.year_slider.observe(year_slider_changed, "value")
 
         def opacity_slider_changed(change):
             year = self.year_slider.value
-            layer_name = ""
-            for layer in self.seg2map.seg_layers:
-                if year in layer.name:
-                    layer_name = layer.name
-
-            value = self.opacity_slider.value
-            if layer_name != "":
-                self.seg2map.map.layer_opacity(layer_name, value)
+            seg_layers = self.seg2map.get_seg_layers()
+            opacity = self.opacity_slider.value
+            self.seg2map.modify_layers_opacity_by_year(seg_layers,year,opacity)
 
         self.opacity_slider.observe(opacity_slider_changed, "value")
 

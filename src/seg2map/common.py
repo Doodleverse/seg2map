@@ -95,7 +95,7 @@ def read_text_file(file_path:str)->List[str]:
         data = f.read().split("\n")
     return data
 
-def get_rgb_img(img_path: str) -> str:
+def convert_to_rgb(img_path: str) -> str:
     """
     Converts an image to RGB format and saves it to a new file.
     Compatable image types: '.jpg' and '.png'
@@ -106,6 +106,7 @@ def get_rgb_img(img_path: str) -> str:
     Returns:
     str: The file path of the converted image.
     """
+    logger.info(f'img_path: {img_path}')
     if img_path.endswith(".jpg"):
         im = Image.open(img_path, formats=("JPEG",)).convert("RGB")
         out_path = img_path.replace(".jpg", "_RGB.jpg")
@@ -113,7 +114,7 @@ def get_rgb_img(img_path: str) -> str:
         im = Image.open(img_path, formats=("PNG",)).convert("RGB")
         out_path = img_path.replace(".png", "_RGB.png")
     im.save(out_path)
-
+    logger.info(f'out_path: {out_path}')
     return out_path
 
 
@@ -152,6 +153,14 @@ def get_years_in_path(full_path: Path) -> List[str]:
                 years.append(entry.name)
     return years
 
+def find_file(dir_path,filename,case_insensitive=True):
+    if case_insensitive:
+        filename = filename.lower()
+    for file in os.listdir(dir_path):
+        if file.lower() == filename:
+            return os.path.join(dir_path,file)
+    return None
+
 def get_image_overlay(tif_path, image_path, layer_name: str,convert_RGB:bool=True,file_format:str='png'):
     """
     Creates an image overlay for a GeoTIFF file using a JPG image.
@@ -164,13 +173,16 @@ def get_image_overlay(tif_path, image_path, layer_name: str,convert_RGB:bool=Tru
     Returns:
     ImageOverlay: An image overlay for the GeoTIFF file.
     """
+    logger.info(f'tif_path: {tif_path}')
+    logger.info(f'image_path: {image_path}')
+    logger.info(f'convert_RGB: {convert_RGB}')
+    logger.info(f'file_format: {file_format}')
     bounds = get_bounds(tif_path)
     # convert image to RGB 
     if convert_RGB:
-        image_path = get_rgb_img(image_path)
+        image_path = convert_to_rgb(image_path)
 
-    img_data = Image.open(image_path)
-    image_overlay=map_functions.get_overlay_for_image(img_data,bounds,layer_name,file_format=file_format)
+    image_overlay=map_functions.get_overlay_for_image(image_path,bounds,layer_name,file_format=file_format)
     return image_overlay
 
 
@@ -349,6 +361,7 @@ def create_merged_multispectural_for_ROIs(roi_paths: List[str]) -> None:
                 logger.warning(f"*{year_path} contains no tifs")
                 continue
             try:
+                # create merged_multispectral.jpg
                 get_merged_multispectural(year_path)
             except Exception as merge_error:
                 logger.error(f"Year: {year_path}\nmerge_error: {merge_error}")

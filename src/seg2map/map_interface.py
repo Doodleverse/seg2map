@@ -25,6 +25,7 @@ from ipywidgets import ToggleButton
 from ipywidgets import HBox
 from ipywidgets import VBox
 from ipywidgets import HTML
+import ipyleaflet
 
 
 logger = logging.getLogger(__name__)
@@ -77,6 +78,11 @@ class Seg2Map:
         self.warning_widget = WidgetControl(widget=self.warning_box, position="topleft")
         self.map.add(self.warning_widget)
 
+    def get_original_layers(self):
+        return self.original_layers
+    
+    def get_seg_layers(self):
+        return self.seg_layers
 
     def get_roi_segmentations(self):
         return self.roi_segmentations.copy()
@@ -139,6 +145,9 @@ class Seg2Map:
         
         # load class names from model_setting.json for a first year
         # available classes are the same for all the years so the year doesn't matter
+
+        # @todo scan all the year directories and see if any have a model settings
+        # if none do then throw an error
         session_year_path=os.path.join(session_path,years[0])
         model_settings_path = os.path.join(session_year_path,"model_settings.json")
         model_settings = common.read_json_file(model_settings_path)
@@ -156,30 +165,21 @@ class Seg2Map:
         for session_year_path in session_path.glob("*"):
             if not session_year_path.is_dir():
                 continue
-
-
-            # logger.info(f"year_path: {session_year_path}")
-            # merged_tif_path = session_year_path.glob("*merged_multispectral.tif*")
-            # merged_tif_path = next(merged_tif_path, None)
-            # if merged_tif_path is None:
-            #     logger.warning(
-            #         f"Does not exist {os.path.join(session_year_path, '*merged_multispectral.tif*')}"
-            #     )
-            #     continue
-            # logger.info(f"merged_tif_path: {merged_tif_path}")
-
             # load model_settings and read roi directory from it
             model_settings_path = os.path.join(session_year_path , "model_settings.json")
             model_settings = common.read_json_file(model_settings_path)
             roi_directory = pathlib.Path(model_settings["sample_direc"])
+            # if the directory name is 'tiles' chdir to the parent directory
+            if "tile" in os.path.basename(roi_directory):
+                roi_directory=os.path.dirname(roi_directory)
 
             # Load original imagery on map
             original_jpg_path = os.path.join(roi_directory,"merged_multispectral.jpg")
             original_tif_path =  os.path.join(roi_directory,"merged_multispectral.tif") 
-            if not original_jpg_path.is_file():
+            if not os.path.isfile(original_jpg_path):
                 logger.warning(f"Does not exist {original_jpg_path}")
                 continue
-            if not original_tif_path.is_file():
+            if not os.path.isfile(original_tif_path):
                 logger.warning(f"Does not exist {original_tif_path}")
                 continue
             logger.info(f"original_jpg_path: {original_jpg_path}")
@@ -197,8 +197,7 @@ class Seg2Map:
 
             # Load segmentation on map from the session directory
             # locate greyscale segmented tif in session directory
-            greyscale_tif_path = session_year_path.glob("*Mosaic_greyscale.tif",case_insensitive=True)
-            greyscale_tif_path = next(greyscale_tif_path, None)
+            greyscale_tif_path = common.find_file(session_year_path,"Mosaic_greyscale.tif",case_insensitive=True)
             if greyscale_tif_path is None:
                 logger.warning(
                     f"Does not exist {os.path.join(session_year_path, '*merged_multispectral.jp*g*')}"
@@ -208,31 +207,90 @@ class Seg2Map:
             mask_layers = map_functions.get_class_masks_overlay(greyscale_tif_path,session_year_path,classes,year_name)
             self.seg_layers.extend(mask_layers)
             
-            # jpg_path = session_year_path.glob("*merged_multispectral.jp*g*")
-            # jpg_path = next(jpg_path, None)
-            # if jpg_path is None:
-            #     logger.warning(
-            #         f"Does not exist {os.path.join(session_year_path, '*merged_multispectral.jp*g*')}"
-            #     )
-            #     continue
-            # logger.info(f"jpg_path: {jpg_path}")
-            # # name layer {filename}_segmentation_{year}
-            # layer_name = f"{merged_tif_path.stem}_segmentation_{session_year_path.name}"
-            # logger.info(f"layer_name: {layer_name}")
-            # new_layer = common.get_image_overlay(
-            #     str(merged_tif_path), str(jpg_path), layer_name
-            # )
-            # self.seg_layers.append(new_layer)
-
-
-        # @todo figure out which layers to display by default
-        # Display first year by default
-        if self.original_layers != []:
-            print(self.map.find_layer(self.original_layers[0].name))
-            self.map.add_layer(self.original_layers[0])
-        # if self.seg_layers != []:
-        #     self.map.add_layer(self.seg_layers[0])
+        # get lists of original and segmentation layers for imagery
+        original_layers = self.get_original_layers()
+        seg_layers = self.get_seg_layers()
+        if len(original_layers)==0 :
+            logger.error(f"No imagery to load on map")
+            raise Exception(f"No imagery to load on map")
+        if  len(seg_layers)==0:
+            logger.warning(f"No segmentations to load on map")
+        # Display first available year by default
+        year = original_layers[0].name.split('_')[-1]
+        layers = original_layers + seg_layers
+        self.load_layers_by_year(layers,year)
         self.map.default_style = {"cursor": "default"}
+
+    def load_layers_by_year(self,layers:List[ipyleaflet.Layer] ,year:str)->None:
+        # load layers on map if year is in layer name
+        # remove layers where year is not in layer name
+        # make sure layer name does not contain 'ROI'
+        year=str(year)
+        if len(layers)==0 :
+            logger.warning(f"No imagery to load on map for year {year}:{layers}")
+        # load layers on map by year
+        for layer in layers:
+            # load the layer on the map if layer name contains year and layer not on map
+            if (
+                year in layer.name
+                and self.map.find_layer(layer.name) is None
+            ):
+                self.map.add_layer(layer)
+            if year not in layer.name and layer.name != "ROI":
+                if layer in self.map.layers:
+                    self.map.remove_layer(layer)
+
+    def modify_layers_opacity_by_year(self,layers:list,year:str='',opacity:float=1.0)->None:
+        """
+        Modifies the opacity of all layers in the given list whose name contains the specified year.
+
+        Args:
+            layers (list): A list of layers to modify.
+            year (str, optional): The year to match against layer names. Default is an empty string, which matches all layers.
+            opacity (float, optional): The opacity value to set for the matching layers. Default is 1.0 (fully opaque).
+
+        Returns:
+            None: This function doesn't return anything.
+
+        Examples:
+            # Set opacity to 0.5 for all layers with "2020" in their name
+            modify_layers_opacity_by_year(layers, "2020", 0.5)
+        """
+        # for each layer with year in its name modify the opacity
+        year=str(year)
+        for layer in layers:
+            # load the layer on the map if layer name contains year and layer not on map
+            if (
+                year in layer.name
+            ):
+                self.modify_layer_opacity(layer, opacity)
+
+    def modify_layer_opacity(self,layer:ipyleaflet.Layer,opacity:float=1.0)->None:
+        """
+        Modifies the opacity of the specified layer on a map.
+
+        Args:
+            layer (ipyleaflet.Layer): The layer to modify.
+            opacity (float, optional): The opacity value to set for the layer, between 0.0 (fully transparent) and 1.0 (fully opaque).
+                Default is 1.0.
+
+        Returns:
+            None: This function doesn't return anything.
+
+        Raises:
+            TypeError: If the `layer` argument is not an instance of `ipyleaflet.Layer`.
+            ValueError: If the layer is not found on the map.
+
+        Examples:
+            # Set opacity to 0.5 for the layer with name "My Layer"
+            my_layer = ipyleaflet.TileLayer(name="My Layer")
+            modify_layer_opacity(my_layer, 0.5)
+        """
+        if isinstance(layer,ipyleaflet.Layer):
+            if self.map.find_layer(layer.name):
+                self.map.layer_opacity(layer.name, opacity)
+
+
 
     def download_imagery(
         self,
@@ -296,26 +354,7 @@ class Seg2Map:
         # create merged multispectural for each year in each ROI
         common.create_merged_multispectural_for_ROIs(roi_paths)
 
-        # # create multispectral tif for each year only if multiband imagery was downloaded
-
-        # if download_bands != "singleband":
-        #     for dir_name in tqdm.auto.tqdm(
-        #         os.listdir(site_path),
-        #         desc="Merging tifs for all ROI",
-        #         leave=False,
-        #         unit_scale=True,
-        #     ):
-        #         roi_path = os.path.join(site_path, dir_name)
-        #         multiband_path = os.path.join(roi_path, "multiband")
-        #         for dir_name in tqdm.auto.tqdm(
-        #             os.listdir(multiband_path),
-        #             desc="Merging tifs per year",
-        #             leave=False,
-        #             unit_scale=True,
-        #         ):
-        #             dir_path = os.path.join(multiband_path, dir_name)
-        #             common.merge_tifs(multiband_path=dir_path, roi_path=dir_path)
-
+        
     def create_delete_box(self, title: str = None, msg: str = None):
         padding = "0px 5px 0px 5px"  # upper, right, bottom, left
         # create title

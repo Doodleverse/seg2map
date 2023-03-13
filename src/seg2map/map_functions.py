@@ -1,4 +1,5 @@
 import os
+import logging
 from typing import Set, Tuple, Union, List
 from base64 import b64encode
 from PIL import Image
@@ -9,9 +10,33 @@ from PIL import Image
 
 from seg2map import common
 
+logger = logging.getLogger(__name__)
+
 # convert greyscale tif to png files that can be rendered on the map
 # file =r'C:\1_USGS\4_seg2map\seg2map\data\fresh_downloads\ID_NVBbrh_dates_2010-01-01_to_2013-12-31\multiband\2010\Mosaic.tif'
 # save_path=r'C:\1_USGS\4_seg2map\seg2map'
+
+def get_existing_class_files(dir_path: str, class_names: list[str]) -> list[str]:
+    """
+    Given a directory path and a list of class names, returns a list of paths to PNG files in that directory
+    whose filenames match the class names.
+
+    Args:
+        dir_path (str): The path to the directory to search for PNG files.
+        class_names (list[str]): A list of class names to match against PNG filenames.
+
+    Returns:
+        list[str]: A list of paths to PNG files in the directory whose filenames match the class names.
+    """
+    existing_files = []
+    for class_name in class_names:
+        filename =f"{class_name}.png"
+        file_path = os.path.join(dir_path, f"{class_name}.png")
+        if os.path.isfile(file_path):
+            existing_files.append(filename)
+    return existing_files
+
+
 
 def get_class_masks_overlay(tif_file:str, mask_output_dir:str, classes:List[str],year:str) -> List:
     """
@@ -29,20 +54,26 @@ def get_class_masks_overlay(tif_file:str, mask_output_dir:str, classes:List[str]
     Returns:
         A list of image overlay layers, one for each class mask.
     """
+
+
     # get bounds of tif 
     bounds = common.get_bounds(tif_file)
     
     # get class names to create class mapping
     class_mapping = get_class_mapping(classes)
     
-    # generate binary masks for each class in tif as a separate PNG in mask_output_dir
-    class_masks = generate_class_masks(tif_file, class_mapping, mask_output_dir)
+    # see if any class masks already exist
+    class_masks_filenames = get_existing_class_files(mask_output_dir,classes)
+    
+     # generate binary masks for each class in tif as a separate PNG in mask_output_dir
+    if not class_masks_filenames:
+        class_masks_filenames = generate_class_masks(tif_file, class_mapping, mask_output_dir)
     
     # for each class mask PNG, create an image overlay
     layers = []
-    for filename in class_masks:
-        file_path = os.path.join(mask_output_dir, filename)
-        new_filename=filename.split(".")[0] + "_"+year
+    for file_path in class_masks_filenames:
+        file_path = os.path.join(mask_output_dir, file_path)
+        new_filename=os.path.basename(file_path).split(".")[0] + "_"+year
         # combine mask name with save path
         image_overlay=get_overlay_for_image(file_path, bounds,new_filename,file_format='png')
         layers.append(image_overlay)
@@ -188,6 +219,9 @@ def get_overlay_for_image(image_path: str, bounds: Tuple, name: str, file_format
         file_format='jpeg'
         scheme ="image/jpeg"
 
+    logger.info(f'image_path: {image_path}')
+    logger.info(f'file_format: {file_format}')
+
     # use pillow to open the image
     img_data = Image.open(image_path)
     # convert image to bytes
@@ -198,6 +232,8 @@ def get_overlay_for_image(image_path: str, bounds: Tuple, name: str, file_format
     return ImageOverlay(url=uri, bounds=bounds, name=name)
 
 def convert_image_to_bytes(image,file_format:str='png'):
+    if file_format.lower() not in ['png', 'jpg', 'jpeg']:
+        raise ValueError(f"{file_format} is not recognized. Allowed file formats are: png, jpg, and jpeg.")
     file_format = "PNG" if file_format.lower() == 'png' else "JPEG"
     f = BytesIO()
     image.save(f, file_format)
