@@ -6,7 +6,9 @@ import platform
 import json
 import logging
 from typing import List, Set
+
 from seg2map import common
+
 import requests
 import skimage
 import aiohttp
@@ -33,7 +35,6 @@ import tensorflow as tf
 
 logger = logging.getLogger(__name__)
 
-from time import perf_counter
 
 
 def get_sorted_files_with_extension(
@@ -84,17 +85,6 @@ def get_merged_multispectural(src_path: str) -> str:
     return merged_file
 
 
-def time_func(func):
-    def wrapper(*args, **kwargs):
-        start = perf_counter()
-        result = func(*args, **kwargs)
-        end = perf_counter()
-        print(f"{func.__name__} took {end - start:.6f} seconds to run.")
-        return result
-
-    return wrapper
-
-
 def get_seg_files_by_year(dir_path: str) -> dict:
     """
     Returns a dictionary of segmentation files organized by year.
@@ -127,9 +117,22 @@ def get_seg_files_by_year(dir_path: str) -> dict:
     return files_per_year
 
 
-def get_five_band_imagery(
-    RGB_path: str, MNDWI_path: str, NDWI_path: str, output_path: str
-):
+def get_five_band_imagery(RGB_path: str, MNDWI_path: str, NDWI_path: str, output_path: str) -> str:
+    """Create a five-band image by combining three image directories containing JPEG files.
+
+    Args:
+        RGB_path (str): Path to directory containing red-green-blue (RGB) image files.
+        MNDWI_path (str): Path to directory containing Modified Normalized Difference Water Index (MNDWI) image files.
+        NDWI_path (str): Path to directory containing Normalized Difference Water Index (NDWI) image files.
+        output_path (str): Path to directory where the output five-band image file will be saved.
+
+    Returns:
+        str: The path to the output directory where the compressed npz file has been saved.
+
+    Raises:
+        ValueError: If the file format is not recognized.
+
+    """
     paths = [RGB_path, MNDWI_path, NDWI_path]
     files = []
     for data_path in paths:
@@ -828,7 +831,7 @@ class Zoo_Model:
                 desc=f"Running Models",
             )
 
-    @time_func
+    @common.time_func
     def compute_segmentation(
         self,
         sample_direc: str,
@@ -882,7 +885,7 @@ class Zoo_Model:
                 profile="meta",
             )
 
-    @time_func
+    @common.time_func
     def get_model(self, weights_list: list):
         model_list = []
         config_files = []
@@ -1043,7 +1046,7 @@ class Zoo_Model:
 
         return model, model_list, config_files, model_types
 
-    @time_func
+    @common.time_func
     def get_metadatadict(
         self, weights_list: list, config_files: list, model_types: list
     ):
@@ -1053,7 +1056,7 @@ class Zoo_Model:
         metadatadict["model_types"] = model_types
         return metadatadict
 
-    @time_func
+    @common.time_func
     def get_weights_list(self, model_choice: str = "ENSEMBLE"):
         """Returns of the weights files(.h5) within weights_direc"""
         if model_choice == "ENSEMBLE":

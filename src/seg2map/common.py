@@ -17,6 +17,7 @@ import os, json, shutil
 from glob import glob
 import concurrent.futures
 from datetime import datetime
+from time import perf_counter
 
 # Internal dependencies imports
 from seg2map import exception_handler
@@ -55,6 +56,16 @@ from io import BytesIO
 import rasterio
 from ipyleaflet import ImageOverlay
 
+def time_func(func):
+
+    def wrapper(*args, **kwargs):
+        start = perf_counter()
+        result = func(*args, **kwargs)
+        end = perf_counter()
+        print(f"{func.__name__} took {end - start:.6f} seconds to run.")
+        return result
+
+    return wrapper
 
 def extract_roi_id_from_path(path):
     """
@@ -161,6 +172,8 @@ def find_file(dir_path,filename,case_insensitive=True):
             return os.path.join(dir_path,file)
     return None
 
+
+@time_func
 def get_image_overlay(tif_path, image_path, layer_name: str,convert_RGB:bool=True,file_format:str='png'):
     """
     Creates an image overlay for a GeoTIFF file using a JPG image.

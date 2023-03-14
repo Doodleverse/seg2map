@@ -63,23 +63,6 @@ class UI_Models:
     # all instances of UI will share the same debug_view
     model_view = Output()
     run_model_view = Output()
-    # uav_RGB_10class_7566797: https://zenodo.org/record/7566797
-    # uav_RGB_10class_7566810: https://zenodo.org/record/7566810
-    # CoastTrain
-    # ortho_RGB_8class_7574784: https://zenodo.org/record/7574784
-    # naip_RGB_5class_7566992: https://zenodo.org/record/7566992
-    # naip_RGB_8class_7570583: https://zenodo.org/record/7570583
-    # CHESAPEAKE
-    # ortho_RGB_7class_7576904:  https://zenodo.org/record/7576904
-    # OPEN EARTH NET
-    # ortho_RGB_9class_7576894: https://zenodo.org/record/7576894
-    # DeepGlobe
-    # ortho_RGB_7clas_7576898 https://zenodo.org/record/7576898
-    # EnviroAtlas
-    # ortho_RGB_6class_7576909 https://zenodo.org/record/7576909
-    # AAAI-Buildings
-    # ortho_RGB_7class_7607895 https://zenodo.org/record/7607895
-
     def __init__(self):
         # Controls size of ROIs generated on map
         self.model_dict = {
@@ -166,7 +149,7 @@ class UI_Models:
         model_choices_box = HBox(
             [self.model_type_dropdown, self.model_dropdown, self.model_implementation]
         )
-        checkboxes = HBox([self.GPU_checkbox, self.otsu_radio, self.tta_radio])
+        checkboxes = HBox([self.otsu_radio, self.tta_radio])
         instr_vbox = VBox(
             [
                 self.instr_select_images,
@@ -298,7 +281,7 @@ class UI_Models:
         # 2 class model was selected enable otsu threhold radio button
         if "2class" in change["new"]:
             self.otsu_radio.disabled = False
-
+ 
         logger.info(f"change: {change}")
         self.model_dict["model_type"] = change["new"]
 

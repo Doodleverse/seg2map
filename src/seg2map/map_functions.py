@@ -7,14 +7,22 @@ from io import BytesIO
 from base64 import encodebytes
 from ipyleaflet import ImageOverlay
 from PIL import Image
+from time import perf_counter
 
 from seg2map import common
 
 logger = logging.getLogger(__name__)
 
-# convert greyscale tif to png files that can be rendered on the map
-# file =r'C:\1_USGS\4_seg2map\seg2map\data\fresh_downloads\ID_NVBbrh_dates_2010-01-01_to_2013-12-31\multiband\2010\Mosaic.tif'
-# save_path=r'C:\1_USGS\4_seg2map\seg2map'
+def time_func(func):
+
+    def wrapper(*args, **kwargs):
+        start = perf_counter()
+        result = func(*args, **kwargs)
+        end = perf_counter()
+        print(f"{func.__name__} took {end - start:.6f} seconds to run.")
+        return result
+
+    return wrapper
 
 def get_existing_class_files(dir_path: str, class_names: list[str]) -> list[str]:
     """
@@ -37,7 +45,7 @@ def get_existing_class_files(dir_path: str, class_names: list[str]) -> list[str]
     return existing_files
 
 
-
+@time_func
 def get_class_masks_overlay(tif_file:str, mask_output_dir:str, classes:List[str],year:str) -> List:
     """
     Given a path to a TIFF file, create binary masks for each class in the file and
@@ -134,7 +142,7 @@ def generate_color_map(num_colors: int) -> dict:
 
     return color_map
 
-
+@time_func
 def generate_class_masks(file:str,class_mapping:dict,save_path:str)->List:
     """
     Create binary masks for each class in an input grayscale image and save them as PNG files
@@ -170,6 +178,7 @@ def generate_class_masks(file:str,class_mapping:dict,save_path:str)->List:
         mask_img.save(img_path)
         files_saved.append(image_name)
     return files_saved
+
 
 def get_uri(data: bytes,scheme: str = "image/png") -> str:
     """Generates a URI (Uniform Resource Identifier) for a given data object and scheme.
@@ -231,6 +240,7 @@ def get_overlay_for_image(image_path: str, bounds: Tuple, name: str, file_format
     # create image overlay from uri
     return ImageOverlay(url=uri, bounds=bounds, name=name)
 
+@time_func
 def convert_image_to_bytes(image,file_format:str='png'):
     if file_format.lower() not in ['png', 'jpg', 'jpeg']:
         raise ValueError(f"{file_format} is not recognized. Allowed file formats are: png, jpg, and jpeg.")

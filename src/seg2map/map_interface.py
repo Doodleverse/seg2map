@@ -3,7 +3,7 @@ import pathlib
 from glob import glob
 import json
 import logging
-from typing import List
+from typing import List, Optional
 from collections import defaultdict
 from datetime import datetime
 from typing import Union
@@ -45,7 +45,7 @@ class Seg2Map:
         # segmentation data associated with each ROI
         self.roi_segmentations={}
         # classes : all classes available for segmentations
-        self.classes = []
+        self.classes = set()
         # original imagery layers for each year
         self.original_layers = []
         # year that have imagery downloaded
@@ -78,15 +78,61 @@ class Seg2Map:
         self.warning_widget = WidgetControl(widget=self.warning_box, position="topleft")
         self.map.add(self.warning_widget)
 
-    def get_original_layers(self):
-        return self.original_layers
+    def get_original_layers(self, layer_name: Optional[str] = None) -> Union[ipyleaflet.Layer, list[ipyleaflet.Layer], None]:
+        """
+        Returns the first matching original layer with the specified name, or all original layers if no name is given.
+
+        Args:
+            layer_name (str, optional): The name of the layer to look for. If not specified, returns all original layers.
+
+        Returns:
+            ipyleaflet.Layer or list[ipyleaflet.Layer] or None: The first matching layer, or all layers if no name is given.
+            Returns None if no layer is found.
+
+        Examples:
+            # Get the original layer with name "My Layer"
+            my_layer = get_original_layers("My Layer")
+
+            # Get all original layers
+            all_layers = get_original_layers()
+        """
+        matching_layers = []
+        if layer_name is not None:
+            for layer in self.seg_layers:
+                if layer_name in layer.name:
+                    matching_layers.append(layer)
+            return  matching_layers
+        else:
+            return self.original_layers
     
-    def get_seg_layers(self):
-        return self.seg_layers
+    def get_seg_layers(self, layer_name: Optional[str] = None)->List:
+        """
+        Returns the first matching segmentation layer with the specified name, or all segmentation layers if no name is given.
+
+        Args:
+            layer_name (str, optional): The name of the layer to look for. If not specified, returns all segmentation layers.
+
+        Returns:
+            ipyleaflet.Layer or list[ipyleaflet.Layer]: The first matching layer, or all layers if no name is given. Returns None if no layer is found.
+
+        Examples:
+            # Get the segmentation layer with name "My Layer"
+            my_layer = get_seg_layer("My Layer")
+
+            # Get all segmentation layers
+            all_layers = get_seg_layer()
+        """
+        matching_layers = []
+        if layer_name is not None:
+            for layer in self.seg_layers:
+                if layer_name in layer.name:
+                    matching_layers.append(layer)
+            return  matching_layers
+        else:
+            return self.seg_layers
 
     def get_roi_segmentations(self):
         return self.roi_segmentations.copy()
-
 
     def set_roi_segmentations(self, roi_id: str, years: List[str], classes: List[str]) -> None:
         """Sets the segmentation information for a given ROI.
@@ -96,18 +142,21 @@ class Seg2Map:
             years (List[str]): The years for which segmentation data is available.
             classes (List[str]): The classes for which segmentation data is available.
         """
+        classes = list(classes)
         self.roi_segmentations[roi_id] = {"years": years, "classes": classes}
     
     def get_classes(self,roi_id=None):
         if roi_id:
-            return self.get_roi_segmentations()[roi_id]['classes']
+            classes = self.get_roi_segmentations()[roi_id]['classes']
+            classes = set(classes)
+            return classes
         return self.classes
 
     def get_years(self,roi_id=None):
         if roi_id:
             return self.get_roi_segmentations()[roi_id]['years']
         return self.years
-        
+
 
     def get_setttings(self) -> dict:
         logger.info(f"settings: {self.settings}")
@@ -210,6 +259,10 @@ class Seg2Map:
         # get lists of original and segmentation layers for imagery
         original_layers = self.get_original_layers()
         seg_layers = self.get_seg_layers()
+        for seg_layer in seg_layers:
+            self.classes.add(seg_layer.name.split('_')[0])
+
+        
         if len(original_layers)==0 :
             logger.error(f"No imagery to load on map")
             raise Exception(f"No imagery to load on map")
@@ -256,8 +309,8 @@ class Seg2Map:
             # Set opacity to 0.5 for all layers with "2020" in their name
             modify_layers_opacity_by_year(layers, "2020", 0.5)
         """
-        # for each layer with year in its name modify the opacity
         year=str(year)
+        # for each layer with year in its name modify the opacity
         for layer in layers:
             # load the layer on the map if layer name contains year and layer not on map
             if (
@@ -297,10 +350,6 @@ class Seg2Map:
     ) -> None:
         """Download imagery for the selected ROIs on the map.
 
-        Args:
-            download_bands (str): The type of imagery to download. Defaults to "multiband".
-            Possible options: "multiband", "singleband" or "both"
-
         Raises:
             exceptions.Object_Not_Found: If no ROIs exist.
             Exception: If the sitename in settings already exists.
@@ -323,8 +372,6 @@ class Seg2Map:
         logger.info(
             f"Download in process.\nsitepath: {site_path}\nselected ids:{selected_ids}"
         )
-        # select number of bands to download
-        download_bands = settings["download_bands"]
         # download all selected ROIs on map to sitename directory
         print("Download in process")
 
