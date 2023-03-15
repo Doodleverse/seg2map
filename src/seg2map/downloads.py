@@ -47,6 +47,7 @@ async def download_file(session, url, save_location):
             print(
                 f"Timeout error occurred for {url}. Retrying with new session in 1 second... ({i + 1}/{retries})"
             )
+            logger.warning(f"Timeout error occurred for {url}. Retrying with new session in 1 second... ({i + 1}/{retries})")
             await asyncio.sleep(1)
             async with aiohttp.ClientSession() as new_session:
                 return await download_file(new_session, url, save_location)
@@ -55,6 +56,7 @@ async def download_file(session, url, save_location):
             logger.error(
                 f"Download failed for {save_location} {url}. Retrying in 1 second... ({i + 1}/{retries})"
             )
+            logger.warning(f"Timeout error occurred for {url}. Retrying with new session in 1 second... ({i + 1}/{retries})")
             print(
                 f"Download failed for {url}. Retrying in 1 second... ({i + 1}/{retries})"
             )

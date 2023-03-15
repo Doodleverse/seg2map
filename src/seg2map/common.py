@@ -870,11 +870,14 @@ def create_greylabel_pngs(full_path: str) -> List[str]:
     return png_files
 
 def create_directory(file_path: str, name: str) -> str:
+    """
+    Creates a new directory with the given name in the specified file path, if it does not already exist.
+    Returns the full path to the new directory.
+    """
     new_directory = os.path.join(file_path, name)
-    # If the directory named 'name' does not exist, create it
-    if not os.path.exists(new_directory):
-        os.makedirs(new_directory)
+    os.makedirs(new_directory, exist_ok=True)
     return new_directory
+
 
 
 def generate_random_string(avoid_list=[]):

@@ -1148,7 +1148,7 @@ class Zoo_Model:
             logger.info(f"Model: {model_json}")
 
             # check if json and h5 file in BEST_MODEL.txt exist
-            model_json = [f for f in files if f["key"] == filename][0]
+            # model_json = [f for f in files if f["key"] == filename][0]
             # path to save model
             model_path = os.path.join(self.weights_direc, filename)
             logger.info(f"model_path for BEST_MODEL.txt: {model_path}")
