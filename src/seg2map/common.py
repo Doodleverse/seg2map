@@ -67,6 +67,20 @@ def time_func(func):
 
     return wrapper
 
+
+def get_subdirectories_with_ids(base_path:str)->dict:
+    all_items = os.listdir(base_path)
+    subdirs_with_ids = {}
+
+    for item in all_items:
+        item_path = os.path.join(base_path, item)
+        if os.path.isdir(item_path) and item.startswith("ID_"):
+            id = item.split("_")[1]
+            subdirs_with_ids[id] = item_path
+
+    return subdirs_with_ids
+
+
 def extract_roi_id_from_path(path):
     """
     Extracts roi_id from a directory name in a given path.
