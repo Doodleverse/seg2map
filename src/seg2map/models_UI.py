@@ -1,6 +1,5 @@
 # standard python imports
 import os
-import glob
 import logging
 
 # internal python imports
@@ -332,18 +331,17 @@ class UI_Models:
         # gets GPU or CPU depending on whether use_GPU is True
         use_GPU = self.model_dict["use_GPU"]
         model_implementation = self.model_dict["implementation"]
-        model_name = self.model_dict["model_type"]
+        model_id = self.model_dict["model_type"]
         use_otsu = self.model_dict["otsu"]
         use_tta = self.model_dict["tta"]
 
-        zoo_model.get_GPU(use_GPU)
-        zoo_model_instance = zoo_model.Zoo_Model()
+        zoo_model_instance = zoo_model.ZooModel()
 
         zoo_model_instance.run_model(
             model_implementation,
             session_name=session_name,
             src_directory=inputs_directory,
-            model_name=model_name,
+            model_id=model_id,
             use_GPU=use_GPU,
             use_otsu=use_otsu,
             use_tta=use_tta,

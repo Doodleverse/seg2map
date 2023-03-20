@@ -57,6 +57,27 @@ class Session:
         self.classes = set()
         self.years = set()
         self.roi_ids = set()
+        self.roi_info={}
+
+    def get_session_data(self)->dict:
+        session_data = {
+            'name': self.name,
+            'path': self.path,
+            'classes': list(self.classes),
+            'years': list(self.years),
+            'roi_ids': list(self.roi_ids),
+        }
+        return session_data
+    
+    def get_roi_info(self,roi_id:str=None):
+        if roi_id:
+            return self.roi_info.get(roi_id,"")
+        return self.roi_info
+
+    def set_roi_info(self,new_roi_info:dict):
+        return self.roi_info.update(new_roi_info)
+
+    # def create_roi_directories()
 
     def add_classes(self, class_names:List[str]):
         """
@@ -96,6 +117,20 @@ class Session:
         else:
             self.roi_ids.update(roi_ids)
 
+    def find_session_file(self,path:str,filename:str='session.json'):
+        # if session.json is found in main directory then session path was identified
+        session_path = os.path.join(path,filename)
+        if os.path.isfile(session_path):
+            return session_path
+        else:
+            parent_directory = os.path.dirname(path)
+            json_path = os.path.join(parent_directory, filename)
+            if os.path.isfile(json_path):
+                return json_path 
+            else:
+                raise ValueError(f"File '{filename}' not found in the parent directory: {parent_directory} or path")
+      
+
     def load(self, path:str):
         """
         Loads a session from a directory.
@@ -103,7 +138,8 @@ class Session:
         Args:
             path (str): The path to the session directory.
         """
-        with open(os.path.join(path, 'session.json'), 'r') as f:
+        json_path = self.find_session_file(path,'session.json')
+        with open(json_path, 'r') as f:
             session_data = json.load(f)
             self.name = session_data.get('name')
             self.path = session_data.get('path')
@@ -145,20 +181,20 @@ class Session:
 # Example usage:
 
 # Create a new session
-session = Session()
-session.classes = {'Math', 'English', 'Science'}
-session.years = {2020, 2021, 2022}
-session.roi_ids = {1, 2, 3}
-session.name = 'session1'
-session.path = '/path/to/sessions/session1'
+# session = Session()
+# session.classes = {'Math', 'English', 'Science'}
+# session.years = {2020, 2021, 2022}
+# session.roi_ids = {1, 2, 3}
+# session.name = 'session1'
+# session.path = '/path/to/sessions/session1'
 
-# Save the session
-session.save(session.path)
+# # Save the session
+# session.save(session.path)
 
-# Load the session from disk
-session2 = Session()
-session2.load(session.path)
-print(os.path.abspath(session.path))
+# # Load the session from disk
+# session2 = Session()
+# session2.load(session.path)
+# print(os.path.abspath(session.path))
 
-# Check that the loaded session has the same values as the original session
-print(session2)
+# # Check that the loaded session has the same values as the original session
+# print(session2)

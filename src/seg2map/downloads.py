@@ -201,7 +201,7 @@ async def download_group(session, group, semaphore):
     common.unzip_dir(group[0]["filepath"])
     common.delete_empty_dirs(group[0]["filepath"])
     # delete duplicate tifs. keep tif with most non-black pixels
-    common.delete_tifs_at_same_location(group[0]["filepath"])
+    # common.delete_tifs_at_same_location(group[0]["filepath"])
 
 
 # Download the information for each year

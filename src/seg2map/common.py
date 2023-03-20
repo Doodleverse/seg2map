@@ -20,11 +20,9 @@ from datetime import datetime
 from time import perf_counter
 
 # Internal dependencies imports
-from seg2map import exception_handler
 from seg2map import map_functions
 
 from tqdm.auto import tqdm
-import imageio
 import requests
 import zipfile
 from area import area
@@ -33,10 +31,11 @@ import numpy as np
 import geojson
 import matplotlib
 from leafmap import check_file_path
-import pandas as pd
 from osgeo import gdal
 from skimage.io import imsave
-
+import time
+from PIL import Image
+import rasterio
 
 from ipywidgets import ToggleButton
 from ipywidgets import HBox
@@ -49,12 +48,6 @@ from ipyfilechooser import FileChooser
 logger = logging.getLogger(__name__)
 
 
-import time
-from base64 import b64encode
-from PIL import Image, ImageSequence
-from io import BytesIO
-import rasterio
-from ipyleaflet import ImageOverlay
 
 def time_func(func):
 
@@ -67,6 +60,54 @@ def time_func(func):
 
     return wrapper
 
+def find_file(path:str,filename:str='session.json'):
+    # if session.json is found in main directory then session path was identified
+    filepath = os.path.join(path,filename)
+    if os.path.isfile(filepath):
+        return filepath
+    else:
+        parent_directory = os.path.dirname(path)
+        filepath  = os.path.join(parent_directory, filename)
+        if os.path.isfile(filepath ):
+            return filepath
+        else:
+            raise ValueError(f"File '{filename}' not found in the parent directory: {parent_directory} or path")
+      
+
+def write_greylabel_to_png(npz_location: str) -> str:
+    """
+    Given the path of an .npz file containing a 'grey_label' key with an array of uint8 values,
+    writes the array to a PNG file with the same name and location as the .npz file, with the extension
+    changed to .png. Returns the path of the PNG file.
+
+    Parameters:
+    npz_location (str): The path of the .npz file to read from.
+
+    Returns:
+    str: The path of the written PNG file.
+    """
+    png_path=npz_location.replace('.npz','.png')
+    with np.load(npz_location) as data:
+        dat = 1+np.round(data['grey_label'].astype('uint8'))
+    imsave(png_path, dat, check_contrast=False, compression=0)
+    return png_path
+
+def create_greylabel_pngs(full_path: str) -> List[str]:
+    """
+    Given a directory path, finds all .npz files in the directory, writes the 'grey_label' array of each .npz
+    file to a corresponding PNG file, and returns a list of the paths of the written PNG files.
+
+    Parameters:
+    full_path (str): The path of the directory to search for .npz files.
+
+    Returns:
+    List[str]: A list of the paths of the written PNG files.
+    """
+    png_files=[]
+    npzs = sorted(glob(os.path.join(full_path, '*.npz')))
+    for npz in npzs:
+        png_files.append(write_greylabel_to_png(npz))
+    return png_files
 
 def get_subdirectories_with_ids(base_path:str)->dict:
     all_items = os.listdir(base_path)
@@ -223,6 +264,20 @@ class Timer:
         self.interval = self.end - self.start
         print(f"Elapsed time: {self.interval:.6f} seconds")
 
+def build_tiff(tif_path,vrt_path):
+    # then build tiff
+    ds = gdal.Translate(destName=tif_path, creationOptions=["NUM_THREADS=ALL_CPUS", "COMPRESS=LZW", "TILED=YES"], srcDS=vrt_path)
+    ds.FlushCache()
+    ds = None
+
+def build_vrt(vrt_path:str,imgsToMosaic:List[str],resampleAlg:str='mode'):
+    vrt_options = gdal.BuildVRTOptions(resampleAlg=resampleAlg)
+    try:
+        ds = gdal.BuildVRT(vrt_path, imgsToMosaic, options=vrt_options)
+        ds.FlushCache()
+        ds = None
+    except Exception as e:
+        print(f"Error building VRT file: {e}")
 
 def create_dir_chooser(callback, title: str = None, starting_directory: str = "data"):
     """
@@ -305,47 +360,6 @@ def group_tif_locations(dir_path):
             tif_groups[(x_min, x_size, y_max, y_size)] = [tif_file]
 
     return list(tif_groups.values())
-
-
-def delete_tifs_at_same_location(path):
-    multiple_tifs_same_location = [
-        tifs for tifs in group_tif_locations(path) if len(tifs) > 1
-    ]
-    delete_tifs_with_black_pixels(multiple_tifs_same_location)
-
-
-def delete_tifs_except(tif_paths, keep_tif_path):
-    for tif_path in tif_paths:
-        if tif_path != keep_tif_path:
-            os.remove(tif_path)
-
-
-def delete_tifs_with_black_pixels(tif_groups):
-    # only keep tifs where ratio of non-black pixels to total pixels is the highest
-    for tif_paths in tif_groups:
-        max_tif_path = max(tif_paths, key=get_pixel_ratio)
-        delete_tifs_except(tif_paths, max_tif_path)
-
-
-def get_pixel_ratio(tif_path):
-    """
-    Calculates the ratio of non-black pixels to total pixels in a GeoTIFF file.
-
-    Args:
-        tif_path: str - The file path to the GeoTIFF file.
-
-    Returns:
-        float - The ratio of non-black pixels to total pixels in the GeoTIFF file.
-
-    Example:
-        ratio = get_pixel_ratio("path/to/tif_file.tif")
-        # Returns a float representing the ratio of non-black pixels to total pixels in the GeoTIFF file.
-    """
-    img = imageio.imread(tif_path)
-    total_pixels = (img >= 0).sum()
-    non_black_pixels = (img > 0).sum()
-    pixel_ratio = non_black_pixels / total_pixels
-    return pixel_ratio
 
 
 def group_files(files: List[str], size: int = 2) -> List[List[str]]:
@@ -435,12 +449,10 @@ def merge_files(src_files: str, vrt_path: str, create_jpg: bool = True) -> str:
         if not os.path.exists(file):
             raise FileNotFoundError(f"{file} not found.")
     try:
-        ## create vrt(virtual world format) file
-        # Create VRT file
+        # create vrt(virtual world format) file
         vrt_options = gdal.BuildVRTOptions(
             resampleAlg="mode", srcNodata=0, VRTNodata=0
         )
-        print(f"dest_path: {vrt_path}")
         logger.info(f"dest_path: {vrt_path}")
         # creates a virtual world file using all the tifs and overwrites any pre-existing .vrt
         virtual_dataset = gdal.BuildVRT(vrt_path, src_files, options=vrt_options)
@@ -848,40 +860,6 @@ def create_dir(dir_path: str, raise_error=True) -> str:
         os.makedirs(dir_path)
     return dir_path
 
-def write_greylabel_to_png(k: str) -> str:
-    """
-    Given the path of an .npz file containing a 'grey_label' key with an array of uint8 values,
-    writes the array to a PNG file with the same name and location as the .npz file, with the extension
-    changed to .png. Returns the path of the PNG file.
-
-    Parameters:
-    k (str): The path of the .npz file to read from.
-
-    Returns:
-    str: The path of the written PNG file.
-    """
-    png_path=k.replace('.npz','.png')
-    with np.load(k) as data:
-        dat = 1+np.round(data['grey_label'].astype('uint8'))
-    imsave(png_path, dat, check_contrast=False, compression=0)
-    return png_path
-    
-def create_greylabel_pngs(full_path: str) -> List[str]:
-    """
-    Given a directory path, finds all .npz files in the directory, writes the 'grey_label' array of each .npz
-    file to a corresponding PNG file, and returns a list of the paths of the written PNG files.
-
-    Parameters:
-    full_path (str): The path of the directory to search for .npz files.
-
-    Returns:
-    List[str]: A list of the paths of the written PNG files.
-    """
-    png_files=[]
-    npzs = sorted(glob(os.path.join(full_path, '*.npz')))
-    for npz in npzs:
-        png_files.append(write_greylabel_to_png(npz))
-    return png_files
 
 def create_directory(file_path: str, name: str) -> str:
     """

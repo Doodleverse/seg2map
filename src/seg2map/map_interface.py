@@ -14,6 +14,7 @@ from seg2map import exceptions
 from seg2map import exception_handler
 from seg2map import downloads
 from seg2map import map_functions
+from seg2map import sessions
 
 import geopandas as gpd
 import tqdm
@@ -174,99 +175,102 @@ class Seg2Map:
 
         return self.settings
 
-    def load_session(self, session_path: str) -> None:
-        """
-        Loads a session onto the map, containing the segmented imagery and a model settings.json file that contains a reference to the original imagery.
-
-        Args:
-            session_path: str - The path to the session directory containing the segmented imagery and model settings file.
-
-        Returns:
-            None.
-        """
-        self.map.default_style = {"cursor": "wait"}
-
-        session_path = pathlib.Path(session_path)
-
-        years = common.get_years_in_path(session_path)
-        if not years:
-            raise Exception(f"No year directories found in session {session_path}")
-        
-        # load class names from model_setting.json for a first year
-        # available classes are the same for all the years so the year doesn't matter
-
-        # @todo scan all the year directories and see if any have a model settings
-        # if none do then throw an error
-        session_year_path=os.path.join(session_path,years[0])
-        model_settings_path = os.path.join(session_year_path,"model_settings.json")
+    def load_session_layers(self,session_path:str,classes:List[str],roi_id:str):
+        # load model_settings and read roi directory from it
+        model_settings_path = os.path.join(session_path , "model_settings.json")
         model_settings = common.read_json_file(model_settings_path)
-        classes = model_settings.get("classes",[])
-        if not classes:
-            raise ValueError(f"model_settings.json is missing classes. {model_settings_path}")
-
         roi_path = model_settings.get("sample_direc","")
         if not roi_path:
             raise ValueError(f"model_settings.json is missing sample_direc. {model_settings_path}")
-        roi_id =  common.extract_roi_id_from_path(roi_path)
-
-        self.set_roi_segmentations(roi_id,years,classes)
-
-        for session_year_path in session_path.glob("*"):
-            if not session_year_path.is_dir():
-                continue
-            # load model_settings and read roi directory from it
-            model_settings_path = os.path.join(session_year_path , "model_settings.json")
-            model_settings = common.read_json_file(model_settings_path)
-            roi_directory = pathlib.Path(model_settings["sample_direc"])
-            # if the directory name is 'tiles' chdir to the parent directory
-            if "tile" in os.path.basename(roi_directory):
-                roi_directory=os.path.dirname(roi_directory)
-
-            # Load original imagery on map
-            original_jpg_path = os.path.join(roi_directory,"merged_multispectral.jpg")
-            original_tif_path =  os.path.join(roi_directory,"merged_multispectral.tif") 
-            if not os.path.isfile(original_jpg_path):
-                logger.warning(f"Does not exist {original_jpg_path}")
-                continue
-            if not os.path.isfile(original_tif_path):
-                logger.warning(f"Does not exist {original_tif_path}")
-                continue
-            logger.info(f"original_jpg_path: {original_jpg_path}")
-            logger.info(f"original_tif_path: {original_tif_path}")
-            # create layer name in the form of {image_name}{year}
-            year_name = session_year_path.name
-            layer_name = f"merged_multispectral_{year_name}"
-            logger.info(f"layer_name: {layer_name}")
-            new_layer = common.get_image_overlay(
-                str(original_tif_path), str(original_jpg_path), layer_name,convert_RGB=True,
-                file_format='jpeg'
-            )
+        
+        roi_directory = pathlib.Path(model_settings["sample_direc"])
+        # if the directory name is 'tiles' chdir to the parent directory
+        if "tile" in os.path.basename(roi_directory):
+            roi_directory=os.path.dirname(roi_directory)
+        # Load original imagery on map
+        original_jpg_path = os.path.join(roi_directory,"merged_multispectral.jpg")
+        original_tif_path =  os.path.join(roi_directory,"merged_multispectral.tif") 
+        if not os.path.isfile(original_jpg_path):
+            logger.warning(f"Does not exist {original_jpg_path}")
+            return
+        if not os.path.isfile(original_tif_path):
+            logger.warning(f"Does not exist {original_tif_path}")
+            return
+        logger.info(f"original_jpg_path: {original_jpg_path}")
+        logger.info(f"original_tif_path: {original_tif_path}")
+        # create layer name in the form of {image_name}{year}
+        year_name = os.path.basename(session_path)
+        layer_name = f"{roi_id}_{year_name}"
+        new_layer = common.get_image_overlay(
+            str(original_tif_path), str(original_jpg_path), layer_name,convert_RGB=True,
+            file_format='jpeg'
+        )
+        if new_layer:
             self.original_layers.append(new_layer)
-            self.years.append(year_name)
+        # create layers for each class present in greyscale tiff
+        class_layers = map_functions.get_class_layers(session_path,classes,year_name,roi_id)
+        if class_layers:
+            self.seg_layers.extend(class_layers)
 
-            # Load segmentation on map from the session directory
-            # locate greyscale segmented tif in session directory
-            greyscale_tif_path = common.find_file(session_year_path,"Mosaic_greyscale.tif",case_insensitive=True)
-            if greyscale_tif_path is None:
-                logger.warning(
-                    f"Does not exist {os.path.join(session_year_path, '*merged_multispectral.jp*g*')}"
-                )
-                continue
-            logger.info(f"greyscale_tif_path: {greyscale_tif_path}")
-            mask_layers = map_functions.get_class_masks_overlay(greyscale_tif_path,session_year_path,classes,year_name)
-            self.seg_layers.extend(mask_layers)
-            
+    def load_session(self, session_path: str) -> None:
+        """
+        Loads a session onto the map, containing the segmented imagery and a model settings.json file that contains a reference to the original imagery.
+        """
+        self.map.default_style = {"cursor": "wait"}
+        session_path =  os.path.abspath(session_path)
+
+        session = sessions.Session()
+        session.load(session_path)
+        classes = list(session.classes)
+        years = list(session.years)
+        roi_ids=list(session.roi_ids)
+        if not years:
+            raise Exception(f"No year directories found in session {session_path}")
+        if not classes:
+            raise ValueError(f"Session is missing classes {session_path}")
+        if not roi_ids:
+            raise ValueError(f"No ROI directories found in session. {session_path}")
+        
+        self.classes= sorted(classes)
+        self.years=sorted(years)
+
+        # if selected path is not the session name then an ROI directory was selected
+        logger.info(f"session_path: {session_path}")
+        logger.info(f"os.path.basename(session_path): {os.path.basename(session_path)}")
+        logger.info(f"session.name: {session.name}")
+
+        if session.name != os.path.basename(session_path):
+            roi_id = os.path.basename(session_path)
+            self.set_roi_segmentations(roi_id,years,classes)
+            top_level_directories = [
+                os.path.join(session_path, d) for d in os.listdir(session_path) if os.path.isdir(os.path.join(session_path, d))
+            ]
+            logger.info(f"top_level_directories: {top_level_directories}")
+            for session_year_path in top_level_directories:
+                self.load_session_layers(session_year_path,classes,roi_id)
+
+        else:
+            for roi_id in roi_ids:
+                self.set_roi_segmentations(roi_id,years,classes)
+                session_roi_directory = os.path.join(session_path,roi_id)
+                top_level_directories = [
+                    os.path.join(session_roi_directory, d) for d in os.listdir(session_roi_directory) if os.path.isdir(os.path.join(session_roi_directory, d))
+                ]
+                logger.info(f"top_level_directories: {top_level_directories}")
+                for session_year_path in top_level_directories:
+                    self.load_session_layers(session_year_path,classes,roi_id)
+
+                
+
         # get lists of original and segmentation layers for imagery
         original_layers = self.get_original_layers()
         seg_layers = self.get_seg_layers()
-        for seg_layer in seg_layers:
-            self.classes.add(seg_layer.name.split('_')[0])
 
-        
+        # By default load first available year of segmentations on the map
         if len(original_layers)==0 :
             logger.error(f"No imagery to load on map")
             raise Exception(f"No imagery to load on map")
-        if  len(seg_layers)==0:
+        if len(seg_layers)==0:
             logger.warning(f"No segmentations to load on map")
         # Display first available year by default
         year = original_layers[0].name.split('_')[-1]
