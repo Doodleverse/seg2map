@@ -244,7 +244,7 @@ def get_files_to_download(available_files: List[dict], filenames: List[str], mod
     for filename in filenames:
         response = next((f for f in available_files if f["key"] == filename), None)
         if response is None:
-            raise ValueError(f"Cannot find {filenames} at {model_id}")
+            raise ValueError(f"Cannot find {filename} at {model_id}")
         link = response["links"]["self"]
         file_path = os.path.join(model_path,filename)
         url_dict[file_path] = link
@@ -700,7 +700,7 @@ class ZooModel:
                 if not class_masks_filenames:
                     class_masks_filenames = map_functions.generate_class_masks(greyscale_tif, class_mapping, year_session_directory)
   
-        # save session settings
+        # save session copy_configssettings
         preprocessed_data_path = os.path.join(session.path, "preprocessed_data.json")
         common.write_to_json(preprocessed_data_path, preprocessed_data)
         session.save(session.path)
@@ -785,6 +785,28 @@ class ZooModel:
     def get_metadatadict(
         self, weights_list: list, config_files: list, model_types: list
     )->dict:
+        """Returns a dictionary containing metadata about the models.
+
+        Args:
+            weights_list (list): A list of model weights.
+            config_files (list): A list of model configuration files.
+            model_types (list): A list of model types.
+
+        Returns:
+            dict: A dictionary containing metadata about the models. The keys
+            are 'model_weights', 'config_files', and 'model_types', and the
+            values are the corresponding input lists.
+
+        Example:
+            weights = ['weights1.h5', 'weights2.h5']
+            configs = ['config1.json', 'config2.json']
+            types = ['unet', 'resunet']
+            metadata = get_metadatadict(weights, configs, types)
+            print(metadata)
+            # Output: {'model_weights': ['weights1.h5', 'weights2.h5'],
+            #          'config_files': ['config1.json', 'config2.json'],
+            #          'model_types': ['unet', 'resunet']}
+        """
         metadatadict = {}
         metadatadict["model_weights"] = weights_list
         metadatadict["config_files"] = config_files
