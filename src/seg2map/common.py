@@ -48,9 +48,7 @@ from ipyfilechooser import FileChooser
 logger = logging.getLogger(__name__)
 
 
-
 def time_func(func):
-
     def wrapper(*args, **kwargs):
         start = perf_counter()
         result = func(*args, **kwargs)
@@ -60,19 +58,22 @@ def time_func(func):
 
     return wrapper
 
-def find_file(path:str,filename:str='session.json'):
+
+def find_file(path: str, filename: str = "session.json"):
     # if session.json is found in main directory then session path was identified
-    filepath = os.path.join(path,filename)
+    filepath = os.path.join(path, filename)
     if os.path.isfile(filepath):
         return filepath
     else:
         parent_directory = os.path.dirname(path)
-        filepath  = os.path.join(parent_directory, filename)
-        if os.path.isfile(filepath ):
+        filepath = os.path.join(parent_directory, filename)
+        if os.path.isfile(filepath):
             return filepath
         else:
-            raise ValueError(f"File '{filename}' not found in the parent directory: {parent_directory} or path")
-      
+            raise ValueError(
+                f"File '{filename}' not found in the parent directory: {parent_directory} or path"
+            )
+
 
 def write_greylabel_to_png(npz_location: str) -> str:
     """
@@ -86,11 +87,12 @@ def write_greylabel_to_png(npz_location: str) -> str:
     Returns:
     str: The path of the written PNG file.
     """
-    png_path=npz_location.replace('.npz','.png')
+    png_path = npz_location.replace(".npz", ".png")
     with np.load(npz_location) as data:
-        dat = 1+np.round(data['grey_label'].astype('uint8'))
+        dat = 1 + np.round(data["grey_label"].astype("uint8"))
     imsave(png_path, dat, check_contrast=False, compression=0)
     return png_path
+
 
 def create_greylabel_pngs(full_path: str) -> List[str]:
     """
@@ -103,13 +105,14 @@ def create_greylabel_pngs(full_path: str) -> List[str]:
     Returns:
     List[str]: A list of the paths of the written PNG files.
     """
-    png_files=[]
-    npzs = sorted(glob(os.path.join(full_path, '*.npz')))
+    png_files = []
+    npzs = sorted(glob(os.path.join(full_path, "*.npz")))
     for npz in npzs:
         png_files.append(write_greylabel_to_png(npz))
     return png_files
 
-def get_subdirectories_with_ids(base_path:str)->dict:
+
+def get_subdirectories_with_ids(base_path: str) -> dict:
     all_items = os.listdir(base_path)
     subdirs_with_ids = {}
 
@@ -141,7 +144,8 @@ def extract_roi_id_from_path(path):
     else:
         return None
 
-def read_text_file(file_path:str)->List[str]:
+
+def read_text_file(file_path: str) -> List[str]:
     """
     Read the contents of a text file and return them as a list of strings.
 
@@ -161,6 +165,7 @@ def read_text_file(file_path:str)->List[str]:
         data = f.read().split("\n")
     return data
 
+
 def convert_to_rgb(img_path: str) -> str:
     """
     Converts an image to RGB format and saves it to a new file.
@@ -172,7 +177,7 @@ def convert_to_rgb(img_path: str) -> str:
     Returns:
     str: The file path of the converted image.
     """
-    logger.info(f'img_path: {img_path}')
+    logger.info(f"img_path: {img_path}")
     if img_path.endswith(".jpg"):
         im = Image.open(img_path, formats=("JPEG",)).convert("RGB")
         out_path = img_path.replace(".jpg", "_RGB.jpg")
@@ -180,7 +185,7 @@ def convert_to_rgb(img_path: str) -> str:
         im = Image.open(img_path, formats=("PNG",)).convert("RGB")
         out_path = img_path.replace(".png", "_RGB.png")
     im.save(out_path)
-    logger.info(f'out_path: {out_path}')
+    logger.info(f"out_path: {out_path}")
     return out_path
 
 
@@ -201,13 +206,14 @@ def get_bounds(tif_path):
     bounds = [(b.bottom, b.left), (b.top, b.right)]
     return bounds
 
+
 def get_years_in_path(full_path: Path) -> List[str]:
     """
     Return a list of directory names within the given directory that match the pattern of a four-digit year (e.g. '2022').
-    
+
     Args:
         directory: The directory to search for year folders. This can be a string or a Path object.
-    
+
     Returns:
         A list of directory names within the given directory that match the pattern of a four-digit year.
     """
@@ -219,17 +225,24 @@ def get_years_in_path(full_path: Path) -> List[str]:
                 years.append(entry.name)
     return years
 
-def find_file(dir_path,filename,case_insensitive=True):
+
+def find_file(dir_path, filename, case_insensitive=True):
     if case_insensitive:
         filename = filename.lower()
     for file in os.listdir(dir_path):
         if file.lower() == filename:
-            return os.path.join(dir_path,file)
+            return os.path.join(dir_path, file)
     return None
 
 
 @time_func
-def get_image_overlay(tif_path, image_path, layer_name: str,convert_RGB:bool=True,file_format:str='png'):
+def get_image_overlay(
+    tif_path,
+    image_path,
+    layer_name: str,
+    convert_RGB: bool = True,
+    file_format: str = "png",
+):
     """
     Creates an image overlay for a GeoTIFF file using a JPG image.
 
@@ -241,16 +254,18 @@ def get_image_overlay(tif_path, image_path, layer_name: str,convert_RGB:bool=Tru
     Returns:
     ImageOverlay: An image overlay for the GeoTIFF file.
     """
-    logger.info(f'tif_path: {tif_path}')
-    logger.info(f'image_path: {image_path}')
-    logger.info(f'convert_RGB: {convert_RGB}')
-    logger.info(f'file_format: {file_format}')
+    logger.info(f"tif_path: {tif_path}")
+    logger.info(f"image_path: {image_path}")
+    logger.info(f"convert_RGB: {convert_RGB}")
+    logger.info(f"file_format: {file_format}")
     bounds = get_bounds(tif_path)
-    # convert image to RGB 
+    # convert image to RGB
     if convert_RGB:
         image_path = convert_to_rgb(image_path)
 
-    image_overlay=map_functions.get_overlay_for_image(image_path,bounds,layer_name,file_format=file_format)
+    image_overlay = map_functions.get_overlay_for_image(
+        image_path, bounds, layer_name, file_format=file_format
+    )
     return image_overlay
 
 
@@ -264,13 +279,19 @@ class Timer:
         self.interval = self.end - self.start
         print(f"Elapsed time: {self.interval:.6f} seconds")
 
-def build_tiff(tif_path,vrt_path):
+
+def build_tiff(tif_path, vrt_path):
     # then build tiff
-    ds = gdal.Translate(destName=tif_path, creationOptions=["NUM_THREADS=ALL_CPUS", "COMPRESS=LZW", "TILED=YES"], srcDS=vrt_path)
+    ds = gdal.Translate(
+        destName=tif_path,
+        creationOptions=["NUM_THREADS=ALL_CPUS", "COMPRESS=LZW", "TILED=YES"],
+        srcDS=vrt_path,
+    )
     ds.FlushCache()
     ds = None
 
-def build_vrt(vrt_path:str,imgsToMosaic:List[str],resampleAlg:str='mode'):
+
+def build_vrt(vrt_path: str, imgsToMosaic: List[str], resampleAlg: str = "mode"):
     vrt_options = gdal.BuildVRTOptions(resampleAlg=resampleAlg)
     try:
         ds = gdal.BuildVRT(vrt_path, imgsToMosaic, options=vrt_options)
@@ -278,6 +299,7 @@ def build_vrt(vrt_path:str,imgsToMosaic:List[str],resampleAlg:str='mode'):
         ds = None
     except Exception as e:
         print(f"Error building VRT file: {e}")
+
 
 def create_dir_chooser(callback, title: str = None, starting_directory: str = "data"):
     """
@@ -397,7 +419,7 @@ def create_merged_multispectural_for_ROIs(roi_paths: List[str]) -> None:
             if len(glob(glob_str)) >= 1:
                 logger.warning(f"*merged_multispectral.jpg already exists {year_path}")
                 continue
-            #no tifs exist to merge
+            # no tifs exist to merge
             if len(os.listdir(year_path)) == 0:
                 logger.warning(f"*{year_path} contains no tifs")
                 continue
@@ -450,9 +472,7 @@ def merge_files(src_files: str, vrt_path: str, create_jpg: bool = True) -> str:
             raise FileNotFoundError(f"{file} not found.")
     try:
         # create vrt(virtual world format) file
-        vrt_options = gdal.BuildVRTOptions(
-            resampleAlg="mode", srcNodata=0, VRTNodata=0
-        )
+        vrt_options = gdal.BuildVRTOptions(resampleAlg="mode", srcNodata=0, VRTNodata=0)
         logger.info(f"dest_path: {vrt_path}")
         # creates a virtual world file using all the tifs and overwrites any pre-existing .vrt
         virtual_dataset = gdal.BuildVRT(vrt_path, src_files, options=vrt_options)
@@ -545,7 +565,8 @@ def gdal_translate_png_to_tiff(
             dst = None  # close and save ds
     return new_files
 
-def move_files_resurcively(src,dest):
+
+def move_files_resurcively(src, dest):
     """Move all files and subdirectories from the source directory to the destination directory recursively.
 
     Args:
@@ -564,10 +585,11 @@ def move_files_resurcively(src,dest):
         # Move the entry to the destination directory
         shutil.move(entry.path, os.path.join(dest, entry.name))
 
+
 def gdal_translate_jpegs(
     files: List[str],
     translateoptions: str = None,
-    kwargs = None,
+    kwargs=None,
 ):
     """Convert TIFF files to JPEG files using GDAL.
 
@@ -589,7 +611,7 @@ def gdal_translate_jpegs(
                 dst = gdal.Translate(jpg_file, file, **kwargs)
                 new_files.append(jpg_file)
             elif translateoptions:
-                dst = gdal.Translate(jpg_file, file, options= translateoptions)
+                dst = gdal.Translate(jpg_file, file, options=translateoptions)
                 new_files.append(jpg_file)
             else:
                 raise ValueError("Must provide value for kwargs or translateoptions.")
@@ -869,7 +891,6 @@ def create_directory(file_path: str, name: str) -> str:
     new_directory = os.path.join(file_path, name)
     os.makedirs(new_directory, exist_ok=True)
     return new_directory
-
 
 
 def generate_random_string(avoid_list=[]):

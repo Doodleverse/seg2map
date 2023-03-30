@@ -1,6 +1,6 @@
 import os
 import logging
-from typing import Tuple,  List
+from typing import Tuple, List
 from PIL import Image
 from io import BytesIO
 import numpy as np
@@ -13,8 +13,8 @@ from seg2map import common
 
 logger = logging.getLogger(__name__)
 
-def time_func(func):
 
+def time_func(func):
     def wrapper(*args, **kwargs):
         start = perf_counter()
         result = func(*args, **kwargs)
@@ -23,6 +23,7 @@ def time_func(func):
         return result
 
     return wrapper
+
 
 def get_existing_class_files(dir_path: str, class_names: list[str]) -> list[str]:
     """
@@ -38,14 +39,16 @@ def get_existing_class_files(dir_path: str, class_names: list[str]) -> list[str]
     """
     existing_files = []
     for class_name in class_names:
-        filename =f"{class_name}.png"
+        filename = f"{class_name}.png"
         file_path = os.path.join(dir_path, f"{class_name}.png")
         if os.path.isfile(file_path):
             existing_files.append(filename)
     return existing_files
 
 
-def get_class_masks_overlay(tif_file:str, mask_output_dir:str, classes:List[str],year:str,roi_id:str) -> List:
+def get_class_masks_overlay(
+    tif_file: str, mask_output_dir: str, classes: List[str], year: str, roi_id: str
+) -> List:
     """
     Given a path to a TIFF file, create binary masks for each class in the file and
     return a list of image overlay layers that can be used to display the masks over
@@ -62,44 +65,54 @@ def get_class_masks_overlay(tif_file:str, mask_output_dir:str, classes:List[str]
         A list of image overlay layers, one for each class mask.
     """
     logger.info(f"tif_file: {tif_file}")
-    # get bounds of tif 
+    # get bounds of tif
     bounds = common.get_bounds(tif_file)
-    
+
     # get class names to create class mapping
     class_mapping = get_class_mapping(classes)
-    
+
     # see if any class masks already exist
-    class_masks_filenames = get_existing_class_files(mask_output_dir,classes)
-    
-     # generate binary masks for each class in tif as a separate PNG in mask_output_dir
+    class_masks_filenames = get_existing_class_files(mask_output_dir, classes)
+
+    # generate binary masks for each class in tif as a separate PNG in mask_output_dir
     if not class_masks_filenames:
-        class_masks_filenames = generate_class_masks(tif_file, class_mapping, mask_output_dir)
-    
+        class_masks_filenames = generate_class_masks(
+            tif_file, class_mapping, mask_output_dir
+        )
+
     # for each class mask PNG, create an image overlay
     layers = []
     for file_path in class_masks_filenames:
         file_path = os.path.join(mask_output_dir, file_path)
-        layer_name=roi_id+"_"+os.path.basename(file_path).split(".")[0] + "_"+year
+        layer_name = (
+            roi_id + "_" + os.path.basename(file_path).split(".")[0] + "_" + year
+        )
         # combine mask name with save path
-        image_overlay=get_overlay_for_image(file_path, bounds,layer_name,file_format='png')
+        image_overlay = get_overlay_for_image(
+            file_path, bounds, layer_name, file_format="png"
+        )
         layers.append(image_overlay)
     return layers
 
-def get_class_layers(tif_directory,classes,year,roi_id)->List:
+
+def get_class_layers(tif_directory, classes, year, roi_id) -> List:
     # locate greyscale segmented tif in session directory
-    greyscale_tif_path = common.find_file(tif_directory,"Mosaic_greyscale.tif",case_insensitive=True)
+    greyscale_tif_path = common.find_file(
+        tif_directory, "Mosaic_greyscale.tif", case_insensitive=True
+    )
     if greyscale_tif_path is None:
         logger.warning(
             f"Does not exist {os.path.join(tif_directory, '*merged_multispectral.jp*g*')}"
         )
         return []
     # create layers for each class present in greyscale tiff
-    class_layers = get_class_masks_overlay(greyscale_tif_path,tif_directory,classes,year,roi_id)
+    class_layers = get_class_masks_overlay(
+        greyscale_tif_path, tif_directory, classes, year, roi_id
+    )
     return class_layers
-                
 
 
-def get_class_mapping(names:List[str])->dict:
+def get_class_mapping(names: List[str]) -> dict:
     """Create a mapping of class names to integer labels.
 
     Given a list of class names, this function creates a dictionary that maps each
@@ -127,6 +140,7 @@ def get_class_mapping(names:List[str])->dict:
         class_mapping[i] = name
     return class_mapping
 
+
 def generate_color_map(num_colors: int) -> dict:
     """
     Generate a color map for the specified number of colors.
@@ -151,6 +165,7 @@ def generate_color_map(num_colors: int) -> dict:
         color_map[i] = tuple(int(255 * c) for c in color)
 
     return color_map
+
 
 @time_func
 def generate_class_masks(file: str, class_mapping: dict, save_path: str) -> List[str]:
@@ -208,13 +223,13 @@ def generate_class_masks(file: str, class_mapping: dict, save_path: str) -> List
     return files_saved
 
 
-def get_uri(data: bytes,scheme: str = "image/png") -> str:
+def get_uri(data: bytes, scheme: str = "image/png") -> str:
     """Generates a URI (Uniform Resource Identifier) for a given data object and scheme.
 
     The data is first encoded as base64, and then added to the URI along with the specified scheme.
-    
+
     Works for both RGB and RGBA imagery
-    
+
     Scheme : string of character that specifies the purpose of the uri
     Available schemes for imagery:
     "image/jpeg"
@@ -234,7 +249,10 @@ def get_uri(data: bytes,scheme: str = "image/png") -> str:
     """
     return f"data:{scheme};base64,{encodebytes(data).decode('ascii')}"
 
-def get_overlay_for_image(image_path: str, bounds: Tuple, name: str, file_format: str) -> ImageOverlay:
+
+def get_overlay_for_image(
+    image_path: str, bounds: Tuple, name: str, file_format: str
+) -> ImageOverlay:
     """Create an ImageOverlay object for an image file.
 
     Args:
@@ -246,32 +264,37 @@ def get_overlay_for_image(image_path: str, bounds: Tuple, name: str, file_format
     Returns:
         An ImageOverlay object.
     """
-    if file_format.lower() not in ['png', 'jpg', 'jpeg']:
-        raise ValueError(f"{file_format} is not recognized. Allowed file formats are: png, jpg, and jpeg.")
+    if file_format.lower() not in ["png", "jpg", "jpeg"]:
+        raise ValueError(
+            f"{file_format} is not recognized. Allowed file formats are: png, jpg, and jpeg."
+        )
 
-    if file_format.lower() == 'png':
-        file_format='png'
-        scheme ="image/png"
-    elif file_format.lower() == 'jpg' or file_format.lower() == 'jpeg':
-        file_format='jpeg'
-        scheme ="image/jpeg"
+    if file_format.lower() == "png":
+        file_format = "png"
+        scheme = "image/png"
+    elif file_format.lower() == "jpg" or file_format.lower() == "jpeg":
+        file_format = "jpeg"
+        scheme = "image/jpeg"
 
-    logger.info(f'image_path: {image_path}')
-    logger.info(f'file_format: {file_format}')
+    logger.info(f"image_path: {image_path}")
+    logger.info(f"file_format: {file_format}")
 
     # use pillow to open the image
     img_data = Image.open(image_path)
     # convert image to bytes
-    img_bytes=convert_image_to_bytes(img_data,file_format)
+    img_bytes = convert_image_to_bytes(img_data, file_format)
     # create a uri from bytes
-    uri = get_uri(img_bytes,scheme)
+    uri = get_uri(img_bytes, scheme)
     # create image overlay from uri
     return ImageOverlay(url=uri, bounds=bounds, name=name)
 
-def convert_image_to_bytes(image,file_format:str='png'):
-    if file_format.lower() not in ['png', 'jpg', 'jpeg']:
-        raise ValueError(f"{file_format} is not recognized. Allowed file formats are: png, jpg, and jpeg.")
-    file_format = "PNG" if file_format.lower() == 'png' else "JPEG"
+
+def convert_image_to_bytes(image, file_format: str = "png"):
+    if file_format.lower() not in ["png", "jpg", "jpeg"]:
+        raise ValueError(
+            f"{file_format} is not recognized. Allowed file formats are: png, jpg, and jpeg."
+        )
+    file_format = "PNG" if file_format.lower() == "png" else "JPEG"
     f = BytesIO()
     image.save(f, file_format)
     # get the bytes from the bytesIO object

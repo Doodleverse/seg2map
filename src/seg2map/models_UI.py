@@ -62,6 +62,7 @@ class UI_Models:
     # all instances of UI will share the same debug_view
     model_view = Output()
     run_model_view = Output()
+
     def __init__(self):
         # Controls size of ROIs generated on map
         self.model_dict = {
@@ -280,7 +281,7 @@ class UI_Models:
         # 2 class model was selected enable otsu threhold radio button
         if "2class" in change["new"]:
             self.otsu_radio.disabled = False
- 
+
         logger.info(f"change: {change}")
         self.model_dict["model_type"] = change["new"]
 

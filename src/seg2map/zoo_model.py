@@ -65,6 +65,7 @@ def get_sorted_files_with_extension(
             break
     return sample_filenames
 
+
 def write_greylabel_to_png(npz_location: str) -> str:
     """
     Given the path of an .npz file containing a 'grey_label' key with an array of uint8 values,
@@ -77,11 +78,12 @@ def write_greylabel_to_png(npz_location: str) -> str:
     Returns:
     str: The path of the written PNG file.
     """
-    png_path=npz_location.replace('.npz','.png')
+    png_path = npz_location.replace(".npz", ".png")
     with np.load(npz_location) as data:
-        dat = 1+np.round(data['grey_label'].astype('uint8'))
+        dat = 1 + np.round(data["grey_label"].astype("uint8"))
     imsave(png_path, dat, check_contrast=False, compression=0)
     return png_path
+
 
 def create_greylabel_pngs(full_path: str) -> List[str]:
     """
@@ -94,93 +96,97 @@ def create_greylabel_pngs(full_path: str) -> List[str]:
     Returns:
     List[str]: A list of the paths of the written PNG files.
     """
-    png_files=[]
+    png_files = []
     logger.info(f"full_path: {full_path}")
-    npzs = sorted(glob(os.path.join(full_path, '*.npz')))
+    npzs = sorted(glob(os.path.join(full_path, "*.npz")))
     logger.info(f"npzs: {npzs}")
     for npz in npzs:
         png_files.append(write_greylabel_to_png(npz))
     return png_files
 
-def rename_xmls(src,old_name,new_name):
-    xml_files = sorted(glob(os.path.join(src, '*.xml')))
+
+def rename_xmls(src, old_name, new_name):
+    xml_files = sorted(glob(os.path.join(src, "*.xml")))
     ## rename xmls
     for xml_file in xml_files:
         new_filename = xml_file.replace(old_name, new_name)
         if not os.path.isfile(new_filename):
             os.rename(xml_file, new_filename)
 
-def copy_xmls(src,dst):
+
+def copy_xmls(src, dst):
     ## copy the xml files into the 'out' folder
-    xml_files = sorted(glob(os.path.join(src, '*.xml')))
+    xml_files = sorted(glob(os.path.join(src, "*.xml")))
     for xml_file in xml_files:
-        new_filename = xml_file.replace(src,dst)
+        new_filename = xml_file.replace(src, dst)
         if not os.path.isfile(new_filename):
-            shutil.copyfile(xml_file,new_filename)
+            shutil.copyfile(xml_file, new_filename)
+
 
 def remove_unused_files(outputs_path):
-    # Remove "prob.png" files   
-    _ = [os.remove(k) for k in glob(os.path.join(outputs_path,'*prob.png'))]
+    # Remove "prob.png" files
+    _ = [os.remove(k) for k in glob(os.path.join(outputs_path, "*prob.png"))]
     # Remove "overlay.png" files ...
-    _ = [os.remove(k) for k in glob(os.path.join(outputs_path,'*overlay.png'))]
+    _ = [os.remove(k) for k in glob(os.path.join(outputs_path, "*overlay.png"))]
+
 
 def rename_predictions(predictions_location):
     # find predictions and rename
     # Get imgs list
-    predicition_pngs = sorted(glob(os.path.join(predictions_location, '*.png')))
+    predicition_pngs = sorted(glob(os.path.join(predictions_location, "*.png")))
     # rename pngs
     for prediction in predicition_pngs:
-        new_filename = prediction.replace('_predseg','')
+        new_filename = prediction.replace("_predseg", "")
         if not os.path.isfile(new_filename):
-            os.rename(prediction,new_filename)
+            os.rename(prediction, new_filename)
 
-def make_greyscale_tif(tiles_location,tif_location):
+
+def make_greyscale_tif(tiles_location, tif_location):
     logger.info(f"tiles_location: {tiles_location}")
     logger.info(f"tif_location: {tif_location}")
-    outputs_path = os.path.join(tiles_location,'out')
+    outputs_path = os.path.join(tiles_location, "out")
     logger.info(f"outputs_path: {outputs_path}")
-    copy_xmls(tiles_location,outputs_path)
-    rename_xmls(outputs_path,'.jpg.aux.xml', '.png.aux.xml')
+    copy_xmls(tiles_location, outputs_path)
+    rename_xmls(outputs_path, ".jpg.aux.xml", ".png.aux.xml")
     rename_predictions(outputs_path)
     imgsToMosaic = create_greylabel_pngs(outputs_path)
     if len(imgsToMosaic) == 0:
         logger.warning("No segmented images were found")
-        return ''
-    rename_xmls(outputs_path,'.png','_res.png')
-    
-    outVRT = os.path.join(tif_location, 'Mosaic_greyscale.vrt')
-    outTIF = os.path.join(tif_location, 'Mosaic_greyscale.tif')  
-    common.build_vrt(outVRT,imgsToMosaic,resampleAlg = 'mode')
+        return ""
+    rename_xmls(outputs_path, ".png", "_res.png")
+
+    outVRT = os.path.join(tif_location, "Mosaic_greyscale.vrt")
+    outTIF = os.path.join(tif_location, "Mosaic_greyscale.tif")
+    common.build_vrt(outVRT, imgsToMosaic, resampleAlg="mode")
     # create greyscale tiff
-    common.build_tiff(outTIF,outVRT)
+    common.build_tiff(outTIF, outVRT)
     return outTIF
 
 
-def create_overlapping_tiles(tif_path:str,
-                             tiles_path:str,
-                             OVERLAP_PX:int=None,
-                             TARGET_SIZE:int = 768):
-    #retile merged tif and create jpgs ready for model
-    if not OVERLAP_PX: 
-        OVERLAP_PX = TARGET_SIZE//2
+def create_overlapping_tiles(
+    tif_path: str, tiles_path: str, OVERLAP_PX: int = None, TARGET_SIZE: int = 768
+):
+    # retile merged tif and create jpgs ready for model
+    if not OVERLAP_PX:
+        OVERLAP_PX = TARGET_SIZE // 2
     # run retile script with system command. retiles merged_multispectral.tif to have overlap
     cmd = f"python gdal_retile.py -r near -ot Byte -ps {TARGET_SIZE} {TARGET_SIZE} -overlap {OVERLAP_PX} -co 'tiled=YES' -targetDir {tiles_path} {tif_path}"
     os.system(cmd)
-    tif_files = glob(os.path.join(tiles_path,'*.tif'))
-    kwargs = {
-        'format': 'JPEG',
-        'outputType': gdal.GDT_Byte
-    }
+    tif_files = glob(os.path.join(tiles_path, "*.tif"))
+    kwargs = {"format": "JPEG", "outputType": gdal.GDT_Byte}
     # create jpgs for new tifs
-    common.gdal_translate_jpegs(tif_files,kwargs = kwargs)
+    common.gdal_translate_jpegs(tif_files, kwargs=kwargs)
     # delete tif files
     for file in tif_files:
         os.remove(file)
     if len(os.listdir(tiles_path)) == 0:
         return None
     return tiles_path
-  
-def download_url(url: str, save_path: str,progress_bar_name:str="", chunk_size: int = 1024):
+
+
+def download_url(
+    url: str, save_path: str, progress_bar_name: str = "", chunk_size: int = 1024
+):
     """Downloads the model from the given url to the save_path location.
     Args:
         url (str): url to model to download
@@ -215,6 +221,7 @@ def download_url(url: str, save_path: str,progress_bar_name:str="", chunk_size: 
                         fd.write(chunk)
                         pbar.update(len(chunk))
 
+
 def get_zenodo_release(zenodo_id: str) -> dict:
     """
     Retrieves the JSON data for the Zenodo release with the given ID.
@@ -224,7 +231,10 @@ def get_zenodo_release(zenodo_id: str) -> dict:
     response.raise_for_status()
     return response.json()
 
-def get_files_to_download(available_files: List[dict], filenames: List[str], model_id: str, model_path: str) -> dict:
+
+def get_files_to_download(
+    available_files: List[dict], filenames: List[str], model_id: str, model_path: str
+) -> dict:
     """Constructs a dictionary of file paths and their corresponding download links, based on the available files and a list of desired filenames.
 
     Args:
@@ -238,17 +248,18 @@ def get_files_to_download(available_files: List[dict], filenames: List[str], mod
     Raises a ValueError if any of the desired filenames are not available in the available_files list.
     """
     # make sure classes.txt file is downloaded
-    if  isinstance(filenames,str):
-        filenames=[filenames]
-    url_dict={}
+    if isinstance(filenames, str):
+        filenames = [filenames]
+    url_dict = {}
     for filename in filenames:
         response = next((f for f in available_files if f["key"] == filename), None)
         if response is None:
             raise ValueError(f"Cannot find {filename} at {model_id}")
         link = response["links"]["self"]
-        file_path = os.path.join(model_path,filename)
+        file_path = os.path.join(model_path, filename)
         url_dict[file_path] = link
     return url_dict
+
 
 def check_if_files_exist(files_dict: dict) -> dict:
     """Checks if each file in a given dictionary of file paths and download links already exists in the local filesystem.
@@ -265,19 +276,22 @@ def check_if_files_exist(files_dict: dict) -> dict:
             url_dict[save_path] = link
     return url_dict
 
+
 class ZooModel:
     def __init__(self):
-        self.model=None
-        self.weights_directory=""
+        self.model = None
+        self.weights_directory = ""
         self.model_dict = {}
 
-    def get_model_directory(self,model_id:str):
+    def get_model_directory(self, model_id: str):
         # Create a directory to hold the downloaded models
         downloaded_models_path = self.get_downloaded_models_dir()
-        model_directory = common.create_directory(downloaded_models_path,model_id)
+        model_directory = common.create_directory(downloaded_models_path, model_id)
         return model_directory
 
-    def download_model(self, model_choice: str, model_id: str,model_path:str=None) -> None:
+    def download_model(
+        self, model_choice: str, model_id: str, model_path: str = None
+    ) -> None:
         """downloads model specified by zenodo id in model_id.
 
         Downloads best model is model_choice = 'BEST' or all models in
@@ -294,30 +308,34 @@ class ZooModel:
         json_content = get_zenodo_release(zenodo_id)
         available_files = json_content["files"]
 
-        # Download the best model if best or all models if ensemble 
+        # Download the best model if best or all models if ensemble
         if model_choice.upper() == "BEST":
-            self.download_best(available_files,model_path,model_id)
+            self.download_best(available_files, model_path, model_id)
         elif model_choice.upper() == "ENSEMBLE":
-            self.download_ensemble(available_files,model_path,model_id)
-            
-    def download_best(self,available_files:List[dict], model_path:str, model_id:str):
+            self.download_ensemble(available_files, model_path, model_id)
+
+    def download_best(
+        self, available_files: List[dict], model_path: str, model_id: str
+    ):
         """
         Downloads the best model file and its corresponding JSON and classes.txt files from the given list of available files.
-        
+
         Args:
             available_files (list): A list of files available to download.
             model_path (str): The local directory where the downloaded files will be stored.
             model_id (str): The ID of the model being downloaded.
-        
+
         Raises:
             ValueError: If BEST_MODEL.txt file is not found in the given model_id.
-        
+
         Returns:
             None
         """
         download_dict = {}
         # download best_model.txt and read the name of the best model
-        best_model_json = next((f for f in available_files if f["key"] == "BEST_MODEL.txt"), None)
+        best_model_json = next(
+            (f for f in available_files if f["key"] == "BEST_MODEL.txt"), None
+        )
         if best_model_json is None:
             raise ValueError(f"Cannot find BEST_MODEL.txt in {model_id}")
         # download best model file to check if it exists
@@ -328,17 +346,21 @@ class ZooModel:
             download_url(
                 best_model_json["links"]["self"],
                 BEST_MODEL_txt_path,
-                progress_bar_name="Downloading best_model.txt"
+                progress_bar_name="Downloading best_model.txt",
             )
-        
+
         with open(BEST_MODEL_txt_path, "r") as f:
             best_model_filename = f.read().strip()
         # get the json data of the best model _fullmodel.h5 file
         best_json_filename = best_model_filename.replace("_fullmodel.h5", ".json")
-        
+
         # download best model files(.h5, .json) file and classes.txt
-        download_filenames =['classes.txt',best_json_filename,best_model_filename]
-        download_dict.update(get_files_to_download(available_files,download_filenames,model_id,model_path))
+        download_filenames = ["classes.txt", best_json_filename, best_model_filename]
+        download_dict.update(
+            get_files_to_download(
+                available_files, download_filenames, model_id, model_path
+            )
+        )
 
         download_dict = check_if_files_exist(download_dict)
         # download the files that don't exist
@@ -346,22 +368,23 @@ class ZooModel:
         # if any files are not found locally download them asynchronous
         if download_dict != {}:
             downloads.run_async_function(
-                downloads.async_download_url_dict,
-                url_dict = download_dict
+                downloads.async_download_url_dict, url_dict=download_dict
             )
 
-    def download_ensemble(self, available_files:List[dict], model_path:str, model_id:str):
+    def download_ensemble(
+        self, available_files: List[dict], model_path: str, model_id: str
+    ):
         """
         Downloads all the model files and their corresponding JSON and classes.txt files from the given list of available files, for an ensemble model.
-        
+
         Args:
             available_files (list): A list of files available to download.
             model_path (str): The local directory where the downloaded files will be stored.
             model_id (str): The ID of the model being downloaded.
-        
+
         Raises:
             Exception: If no .h5 files or corresponding .json files are found in the given model_id.
-        
+
         Returns:
             None
         """
@@ -369,35 +392,43 @@ class ZooModel:
         # get json and models
         all_models_reponses = [f for f in available_files if f["key"].endswith(".h5")]
         all_model_names = [f["key"] for f in all_models_reponses]
-        json_file_names = [model_name.replace("_fullmodel.h5", ".json") for model_name in all_model_names]
+        json_file_names = [
+            model_name.replace("_fullmodel.h5", ".json")
+            for model_name in all_model_names
+        ]
         all_json_reponses = []
         for available_file in available_files:
             for json_file in json_file_names:
-                if json_file == available_file['key']:
+                if json_file == available_file["key"]:
                     all_json_reponses.append(available_file)
         if len(all_models_reponses) == 0:
             raise Exception(f"Cannot find any .h5 files at {model_id}")
         if len(all_json_reponses) == 0:
-            raise Exception(f"Cannot find corresponding .json files for .h5 files at {model_id}")
-        
+            raise Exception(
+                f"Cannot find corresponding .json files for .h5 files at {model_id}"
+            )
+
         logger.info(f"all_models_reponses : {all_models_reponses }")
         logger.info(f"all_json_reponses : {all_json_reponses }")
-        for response in  all_models_reponses + all_json_reponses:
+        for response in all_models_reponses + all_json_reponses:
             # get the link of the best model
             link = response["links"]["self"]
-            filename = response['key']
+            filename = response["key"]
             filepath = os.path.join(model_path, filename)
             download_dict[filepath] = link
         # download classes.txt file
-        download_dict.update(get_files_to_download(available_files,['classes.txt'],model_id,model_path))
+        download_dict.update(
+            get_files_to_download(
+                available_files, ["classes.txt"], model_id, model_path
+            )
+        )
         download_dict = check_if_files_exist(download_dict)
         # download the files that don't exist
         logger.info(f"URLs to download: {download_dict}")
         # if any files are not found locally download them asynchronous
         if download_dict != {}:
             downloads.run_async_function(
-                downloads.async_download_url_dict,
-                url_dict = download_dict
+                downloads.async_download_url_dict, url_dict=download_dict
             )
 
     def get_model(self, weights_list: list):
@@ -585,60 +616,63 @@ class ZooModel:
         logger.info(f"files to seg: {sample_filenames}")
         return sample_filenames
 
-    def preprocess_data(self, src_directory:str, model_dict:dict,session:sessions.Session):
+    def preprocess_data(
+        self, src_directory: str, model_dict: dict, session: sessions.Session
+    ):
         # load year directories for each ROI
         roi_dict = common.get_subdirectories_with_ids(src_directory)
-        session.roi_ids=list(roi_dict.keys())
-            
+        session.roi_ids = list(roi_dict.keys())
+
         # create dictionary to run on model on for each year in each ROI
         preprocessed_data = {}
-        for roi_id,roi_path in roi_dict.items():
+        for roi_id, roi_path in roi_dict.items():
             # for each year create overlapping tiles and save location of tiles
             model_data_per_year = {}
-            multiband_path= os.path.join(roi_path,'multiband')
+            multiband_path = os.path.join(roi_path, "multiband")
             year_dirs = common.get_matching_dirs(multiband_path, pattern=r"^\d{4}$")
             for year_dir in tqdm.auto.tqdm(
                 year_dirs, desc="Preparing data", leave=False, unit_scale=True
             ):
-                if len(os.listdir(year_dir))==0:
+                if len(os.listdir(year_dir)) == 0:
                     continue
-                original_merged_tif = os.path.join(year_dir,"merged_multispectral.tif")
+                original_merged_tif = os.path.join(year_dir, "merged_multispectral.tif")
                 tiles_path = common.create_directory(year_dir, "tiles")
-                tiles_path = create_overlapping_tiles(original_merged_tif,tiles_path)
+                tiles_path = create_overlapping_tiles(original_merged_tif, tiles_path)
                 if tiles_path == "":
                     continue
                 model_year_dict = model_dict.copy()
                 model_year_dict["sample_direc"] = tiles_path
                 # use year name as the key ex.{ roi_id: '2010':{},'2011':{}}
-                model_data_per_year[os.path.basename(year_dir)]=model_year_dict
-                model_data_per_year['roi_path']=roi_path
+                model_data_per_year[os.path.basename(year_dir)] = model_year_dict
+                model_data_per_year["roi_path"] = roi_path
             # if ROI directory had no years then skip it
-            if len(year_dirs)==0:
+            if len(year_dirs) == 0:
                 continue
-            preprocessed_data[roi_id]=model_data_per_year
+            preprocessed_data[roi_id] = model_data_per_year
 
         logger.info(f"preprocessed_data: {preprocessed_data}")
         return preprocessed_data
-            
+
     def compute_segmentation(
         self,
-        preprocessed_data:dict,
+        preprocessed_data: dict,
     ):
         # perform segmentations for each year in each ROI
         for roi_data in preprocessed_data.values():
             for key in roi_data.keys():
-                if key == 'roi_path':
+                if key == "roi_path":
                     continue
                 logger.info(f"key: {key}")
                 logger.info(f"roi_data[key]: {roi_data[key]}")
                 sample_direc = roi_data[key]["sample_direc"]
-                use_tta =roi_data[key] ['tta']
-                use_otsu =roi_data[key] ['otsu']
+                use_tta = roi_data[key]["tta"]
+                use_otsu = roi_data[key]["otsu"]
                 files_to_segment = self.get_files_for_seg(sample_direc)
                 logger.info(f"files_to_segment: {files_to_segment}")
                 if self.model_types[0] != "segformer":
                     ### mixed precision
                     from tensorflow.keras import mixed_precision
+
                     mixed_precision.set_global_policy("mixed_float16")
                 # run model for each file
                 for file_to_seg in tqdm.auto.tqdm(files_to_segment):
@@ -658,35 +692,45 @@ class ZooModel:
                         profile="meta",
                     )
 
-    def postprocess_data(self,preprocessed_data:dict,session:sessions.Session):
+    def postprocess_data(self, preprocessed_data: dict, session: sessions.Session):
         # get roi_ids
-        for roi_id,roi_data in preprocessed_data.items():
+        for roi_id, roi_data in preprocessed_data.items():
             # create session roi directories
-            roi_session_directory = common.create_directory(session.path,roi_id)
+            roi_session_directory = common.create_directory(session.path, roi_id)
             # copy config files to session directory
-            roi_directory = preprocessed_data[roi_id]['roi_path']
-            self.copy_configs(roi_directory,roi_session_directory)
+            roi_directory = preprocessed_data[roi_id]["roi_path"]
+            self.copy_configs(roi_directory, roi_session_directory)
 
             for key in preprocessed_data[roi_id].keys():
-                if key == 'roi_path':
+                if key == "roi_path":
                     continue
-                year=key
+                year = key
                 session.add_years(year)
                 # create session year sub directories
-                year_session_directory = common.create_directory(roi_session_directory,year)
-                tiles_path = preprocessed_data[roi_id][year]['sample_direc']
+                year_session_directory = common.create_directory(
+                    roi_session_directory, year
+                )
+                tiles_path = preprocessed_data[roi_id][year]["sample_direc"]
                 # move 'tiles' to session directories
-                session_tiles_path =common.create_directory(year_session_directory,'tiles')
+                session_tiles_path = common.create_directory(
+                    year_session_directory, "tiles"
+                )
                 common.move_files_resurcively(src=tiles_path, dest=session_tiles_path)
                 # remove empty tiles directory
                 if os.path.basename(tiles_path).lower() == "tiles":
                     os.rmdir(tiles_path)
                 # save model settings
-                model_settings_path = os.path.join(year_session_directory, "model_settings.json")
-                common.write_to_json(model_settings_path, preprocessed_data[roi_id][year])
+                model_settings_path = os.path.join(
+                    year_session_directory, "model_settings.json"
+                )
+                common.write_to_json(
+                    model_settings_path, preprocessed_data[roi_id][year]
+                )
                 # merge tiles to create greyscale tif
                 # outputs of model are in session_name/ROI_ID/year/tiles/out
-                greyscale_tif = make_greyscale_tif(session_tiles_path,year_session_directory)
+                greyscale_tif = make_greyscale_tif(
+                    session_tiles_path, year_session_directory
+                )
                 if not greyscale_tif:
                     logger.info(f"Year {year} could not generate a  greyscale tif")
                     continue
@@ -694,18 +738,22 @@ class ZooModel:
                 # get class names to create class mapping
                 class_mapping = map_functions.get_class_mapping(session.classes)
                 # see if any class masks already exist in directory
-                class_masks_filenames = map_functions.get_existing_class_files(year_session_directory,session.classes)
-            
-                # in year_session_directory make a separate png containing all the pixels in each class within the tif 
+                class_masks_filenames = map_functions.get_existing_class_files(
+                    year_session_directory, session.classes
+                )
+
+                # in year_session_directory make a separate png containing all the pixels in each class within the tif
                 if not class_masks_filenames:
-                    class_masks_filenames = map_functions.generate_class_masks(greyscale_tif, class_mapping, year_session_directory)
-  
+                    class_masks_filenames = map_functions.generate_class_masks(
+                        greyscale_tif, class_mapping, year_session_directory
+                    )
+
         # save session copy_configssettings
         preprocessed_data_path = os.path.join(session.path, "preprocessed_data.json")
         common.write_to_json(preprocessed_data_path, preprocessed_data)
         session.save(session.path)
 
-    def copy_configs(self, src,dst):
+    def copy_configs(self, src, dst):
         # copy config.geojson and config.json files from souce to destination directories
         config_gdf_path = common.find_config_json(src, r"config_gdf.*\.geojson")
         config_json_path = common.find_config_json(src, r"^config\.json$")
@@ -716,9 +764,8 @@ class ZooModel:
         logger.info(f"dst_config.json: {dst_file}")
         shutil.copy(config_json_path, dst_file)
 
-
-    def get_classes(self,model_directory_path:str):
-        class_path= os.path.join(model_directory_path,"classes.txt")
+    def get_classes(self, model_directory_path: str):
+        class_path = os.path.join(model_directory_path, "classes.txt")
         classes = common.read_text_file(class_path)
         return classes
 
@@ -736,14 +783,14 @@ class ZooModel:
         os.makedirs(downloaded_models_path, exist_ok=True)
         return downloaded_models_path
 
-    def get_weights_list(self,model_path:str, model_choice: str = "BEST"):
+    def get_weights_list(self, model_path: str, model_choice: str = "BEST"):
         """
         Returns a list of the weights files (.h5) within the weights directory, based on the model choice specified.
-        
+
         Args:
             model_path (str): The path to the directory containing the model
             model_choice (str): The type of model weights to return. Possible choices are "BEST" (default) or "ENSEMBLE".
-        
+
         Returns:
             A list of weights files (.h5) within the weights directory, based on the model choice specified.
         """
@@ -757,12 +804,10 @@ class ZooModel:
         logger.info(f"{model_choice}: {len(weights_list)} weights_list: {weights_list}")
         return weights_list
 
-    def prepare_model(self,
-                      model_implementation: str,
-                      model_id:str):
+    def prepare_model(self, model_implementation: str, model_id: str):
         """
         Prepares the model for use by downloading the required files and loading the model.
-        
+
         Args:
             model_implementation (str): The model implementation name.
             model_id (str): The ID of the model.
@@ -770,21 +815,25 @@ class ZooModel:
         # create the model directory
         self.weights_directory = self.get_model_directory(model_id)
         logger.info(f"self.weights_directory:{self.weights_directory}")
-        
-        self.download_model(model_implementation, model_id,self.weights_directory)
-        weights_list = self.get_weights_list(self.weights_directory,model_implementation)
+
+        self.download_model(model_implementation, model_id, self.weights_directory)
+        weights_list = self.get_weights_list(
+            self.weights_directory, model_implementation
+        )
 
         # Load the model from the config files
         model, model_list, config_files, model_types = self.get_model(weights_list)
 
         self.model_types = model_types
         self.model_list = model_list
-        self.metadata_dict = self.get_metadatadict(weights_list, config_files, model_types)
+        self.metadata_dict = self.get_metadatadict(
+            weights_list, config_files, model_types
+        )
         logger.info(f"self.metadatadict: {self.metadata_dict}")
 
     def get_metadatadict(
         self, weights_list: list, config_files: list, model_types: list
-    )->dict:
+    ) -> dict:
         """Returns a dictionary containing metadata about the models.
 
         Args:
@@ -816,23 +865,23 @@ class ZooModel:
     def get_model_dict(self):
         return self.model_dict
 
-
-
-    def run_model(self,         
+    def run_model(
+        self,
         model_implementation: str,
         session_name: str,
         src_directory: str,
         model_id: str,
         use_GPU: str,
         use_otsu: bool,
-        use_tta: bool,):
+        use_tta: bool,
+    ):
 
         logger.info(f"ROI directory: {src_directory}")
         logger.info(f"session name: {session_name}")
 
-        self.prepare_model(model_implementation,model_id)
+        self.prepare_model(model_implementation, model_id)
         classes = self.get_classes(self.weights_directory)
-        model_dict =  {
+        model_dict = {
             "sample_direc": None,
             "use_GPU": use_GPU,
             "implementation": model_implementation,
@@ -851,10 +900,9 @@ class ZooModel:
         session.path = session_path
         session.name = session_name
 
-        preprocessed_data = self.preprocess_data(src_directory,model_dict,session)
+        preprocessed_data = self.preprocess_data(src_directory, model_dict, session)
 
         self.compute_segmentation(preprocessed_data)
-        self.postprocess_data(preprocessed_data,session)
+        self.postprocess_data(preprocessed_data, session)
         # save session data after postprocessing data
         session.save(session_path)
-

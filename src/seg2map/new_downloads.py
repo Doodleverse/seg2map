@@ -29,18 +29,32 @@ import aiohttp
 import logging
 from aiohttp import ClientResponseError, ClientConnectionError
 
-async def async_download_url_dict(url_dict:dict={}):
+
+async def async_download_url_dict(url_dict: dict = {}):
     async with aiohttp.ClientSession() as session:
         tasks = []
         for save_path, url in url_dict.items():
-            task = asyncio.create_task(download_data_with_retries(session,url,save_path,total_attempts=2))
+            task = asyncio.create_task(
+                download_data_with_retries(session, url, save_path, total_attempts=2)
+            )
             tasks.append(task)
         results = await tqdm.asyncio.tqdm.gather(*tasks)
 
-async def download_data_with_retries(session, url, save_location, retries=3, initial_delay=1, max_delay=32, total_attempts=2):
+
+async def download_data_with_retries(
+    session,
+    url,
+    save_location,
+    retries=3,
+    initial_delay=1,
+    max_delay=32,
+    total_attempts=2,
+):
     attempts = 0
     while attempts < total_attempts:
-        success = await download_with_retries(session, url, save_location, retries, initial_delay, max_delay)
+        success = await download_with_retries(
+            session, url, save_location, retries, initial_delay, max_delay
+        )
         if success:
             return True  # Download successful
         attempts += 1
@@ -48,6 +62,7 @@ async def download_data_with_retries(session, url, save_location, retries=3, ini
     logger.error(f"Download failed after {total_attempts} attempts: {url}")
     print(f"Download failed after {total_attempts} attempts: {url}")
     return False
+
 
 async def async_download_url(session, url: str, save_path: str):
     model_name = url.split("/")[-1]
@@ -76,7 +91,9 @@ async def async_download_url(session, url: str, save_path: str):
                     fd.write(chunk)
 
 
-async def download_with_retries(session, url, save_location, retries, initial_delay, max_delay):
+async def download_with_retries(
+    session, url, save_location, retries, initial_delay, max_delay
+):
     delay = initial_delay
     for i in range(retries):
         try:
@@ -101,7 +118,7 @@ async def download_with_retries(session, url, save_location, retries, initial_de
                                     break
                                 fd.write(chunk)
                                 pbar.update(len(chunk))
-                else:              
+                else:
                     with open(save_location, "wb") as fd:
                         async for chunk in response.content.iter_chunked(1024):
                             fd.write(chunk)
@@ -113,7 +130,9 @@ async def download_with_retries(session, url, save_location, retries, initial_de
         except Exception as e:
             logger.error(f"Unexpected error downloading {url}: {e}")
         if i < retries - 1:
-            logger.warning(f"Retrying download in {delay} seconds... ({i + 1}/{retries})")
+            logger.warning(
+                f"Retrying download in {delay} seconds... ({i + 1}/{retries})"
+            )
             await asyncio.sleep(delay)
             # Update delay for the next iteration, doubling it while ensuring it doesn't exceed max_delay
             delay = min(delay * 2, max_delay)
@@ -412,11 +431,11 @@ def splitPolygon(polygon: gpd.GeoDataFrame, num_splitters: int) -> MultiPolygon:
     result = polygon["geometry"].iloc[0]
     for splitter in splitters:
         result = MultiPolygon(split(result, splitter))
-    
+
     # convert the Polygon to GeoJSON and write it to a file
     with open("splitpolygon.geojson", "w") as outfile:
         # json.dump(shapely.geometry.mapping(result), outfile, indent=4)
-        json.dump(shapely.to_geojson(result),outfile) 
+        json.dump(shapely.to_geojson(result), outfile)
     return result
 
 

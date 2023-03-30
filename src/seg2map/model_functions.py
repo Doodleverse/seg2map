@@ -28,7 +28,7 @@ from doodleverse_utils.model_imports import (
     simple_unet,
     simple_resunet,
     simple_satunet,
-    segformer
+    segformer,
 )
 from joblib import Parallel, delayed
 
@@ -118,7 +118,9 @@ def get_url_dict_to_download(models_json_dict: dict) -> dict:
     return url_dict
 
 
-async def fetch(session: aiohttp.client.ClientSession, url: str, save_path: str) -> None:
+async def fetch(
+    session: aiohttp.client.ClientSession, url: str, save_path: str
+) -> None:
     """downloads the file at url to be saved at save_path. Generates tqdm progress bar
     to track download progress of file
 
@@ -289,7 +291,9 @@ def download_BEST_model(files: list, model_direc: str) -> None:
     # check if json and h5 file in BEST_MODEL.txt exist
     model_json = [f for f in files if f["key"].strip() == best_model_filename]
     if model_json == []:
-        FILE_NOT_ONLINE_ERROR = f"File {best_model_filename} not found online. Raise an issue on Github"
+        FILE_NOT_ONLINE_ERROR = (
+            f"File {best_model_filename} not found online. Raise an issue on Github"
+        )
         raise FileNotFoundError(FILE_NOT_ONLINE_ERROR)
     # path to save model
     outfile = os.path.join(model_direc, best_model_filename)
@@ -370,7 +374,9 @@ def get_config(weights_list: list) -> dict:
         dict: contents of config json files that have same name of h5 files in weights_list
     """
     weights_file = weights_list[0]
-    configfile = weights_file.replace(".h5", ".json").replace("weights", "config").strip()
+    configfile = (
+        weights_file.replace(".h5", ".json").replace("weights", "config").strip()
+    )
     if "fullmodel" in configfile:
         configfile = configfile.replace("_fullmodel", "").strip()
     with open(configfile.strip()) as f:
@@ -401,7 +407,9 @@ def get_model(weights_list: list):
     for weights in weights_list:
         # "fullmodel" is for serving on zoo they are smaller and more portable between systems than traditional h5 files
         # gym makes a h5 file, then you use gym to make a "fullmodel" version then zoo can read "fullmodel" version
-        configfile = weights.replace(".h5", ".json").replace("weights", "config").strip()
+        configfile = (
+            weights.replace(".h5", ".json").replace("weights", "config").strip()
+        )
         if "fullmodel" in configfile:
             configfile = configfile.replace("_fullmodel", "").strip()
         with open(configfile) as f:
@@ -518,21 +526,23 @@ def get_model(weights_list: list):
                     num_layers=4,
                     strides=(1, 1),
                 )
-            elif MODEL=='segformer':
+            elif MODEL == "segformer":
                 id2label = {}
                 for k in range(NCLASSES):
-                    id2label[k]=str(k)
-                model = segformer(id2label,num_classes=NCLASSES)
+                    id2label[k] = str(k)
+                model = segformer(id2label, num_classes=NCLASSES)
                 # model.compile(optimizer='adam')
             else:
-                raise Exception(f"An unknown model type {MODEL} was received. Please select a valid model.")
+                raise Exception(
+                    f"An unknown model type {MODEL} was received. Please select a valid model."
+                )
             # Load in custom loss function from doodleverse_utils
             # Load metrics mean_iou, dice_coef from doodleverse_utils
             # if MODEL!='segformer':
             #     model.compile(
             #         optimizer="adam", loss=dice_coef_loss(NCLASSES)
             #     )  # , metrics = [iou_multi(NCLASSES), dice_multi(NCLASSES)])
-            weights=weights.strip()
+            weights = weights.strip()
             model.load_weights(weights)
 
         model_names.append(MODEL)
@@ -553,7 +563,7 @@ def sort_files(sample_direc: str) -> list:
     """
     # prepares data to be predicted
     sample_filenames = sorted(glob(sample_direc + os.sep + "*.*"))
-    
+
     if sample_filenames[0].split(".")[-1] == "npz":
         sample_filenames = sorted(tf.io.gfile.glob(sample_direc + os.sep + "*.npz"))
     else:
@@ -562,7 +572,9 @@ def sort_files(sample_direc: str) -> list:
             sample_filenames = sorted(glob(sample_direc + os.sep + "*.png"))
     return sample_filenames
 
+
 # =========================================================
+
 
 def compute_segmentation(
     TARGET_SIZE: tuple,
@@ -573,7 +585,7 @@ def compute_segmentation(
     model_list: list,
     metadatadict: dict,
     do_parallel: bool,
-    profile: str
+    profile: str,
 ) -> None:
     """applies models in model_list to directory of imagery in sample_direc.
     imagery will be resized to TARGET_SIZE and should contain number of bands specified by
@@ -591,11 +603,11 @@ def compute_segmentation(
     if "TESTTIMEAUG" not in locals():
         TESTTIMEAUG = False
     WRITE_MODELMETADATA = False
-    OTSU_THRESHOLD=False
+    OTSU_THRESHOLD = False
 
     # Read in the image filenames as either .npz,.jpg, or .png
     files_to_segment = sort_files(sample_direc)
-    sample_direc=os.path.abspath(sample_direc)
+    sample_direc = os.path.abspath(sample_direc)
     # Compute the segmentation for each of the files
 
     if do_parallel:
@@ -603,8 +615,24 @@ def compute_segmentation(
         from joblib import Parallel, delayed
 
         w = Parallel(n_jobs=-1, verbose=1)(
-            delayed(do_seg(file_to_seg, model_list, metadatadict, MODEL, sample_direc, NCLASSES, N_DATA_BANDS, TARGET_SIZE, TESTTIMEAUG, WRITE_MODELMETADATA, OTSU_THRESHOLD, profile))() 
-            for file_to_seg in files_to_segment)
+            delayed(
+                do_seg(
+                    file_to_seg,
+                    model_list,
+                    metadatadict,
+                    MODEL,
+                    sample_direc,
+                    NCLASSES,
+                    N_DATA_BANDS,
+                    TARGET_SIZE,
+                    TESTTIMEAUG,
+                    WRITE_MODELMETADATA,
+                    OTSU_THRESHOLD,
+                    profile,
+                )
+            )()
+            for file_to_seg in files_to_segment
+        )
 
     else:
 
@@ -621,5 +649,5 @@ def compute_segmentation(
                 TESTTIMEAUG=TESTTIMEAUG,
                 WRITE_MODELMETADATA=WRITE_MODELMETADATA,
                 OTSU_THRESHOLD=OTSU_THRESHOLD,
-                profile=profile
+                profile=profile,
             )
