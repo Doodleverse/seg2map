@@ -25,6 +25,7 @@ from ipywidgets import Text
 from ipywidgets import Output
 from ipywidgets import FloatSlider
 from ipywidgets import SelectionSlider
+from ipywidgets import Dropdown
 
 
 logger = logging.getLogger(__name__)
@@ -134,9 +135,6 @@ class UI:
             description="Sitename:",
             disabled=False,
         )
-
-        img_type_picker = self.get_image_types_picker()
-
         settings_button = Button(description="Save Settings", style=self.action_style)
         settings_button.on_click(self.save_settings_clicked)
 
@@ -145,7 +143,6 @@ class UI:
             [
                 dates_vbox,
                 self.sitename_field,
-                img_type_picker,
                 settings_button,
                 UI.settings_messages,
             ]
@@ -169,20 +166,6 @@ class UI:
         dates_box = HBox([self.start_date, self.end_date])
         dates_vbox = VBox([date_instr, dates_box])
         return dates_vbox
-
-    def get_image_types_picker(self) -> VBox:
-        image_types = ["multiband", "singleband", "both"]
-        self.img_type_radio = RadioButtons(
-            options=image_types,
-            value=image_types[0],
-            description="",
-            disabled=False,
-        )
-        instr = HTML(
-            value="<b>Pick type of imagery:</b>", layout=Layout(padding="10px")
-        )
-        img_type_vbox = HBox([instr, self.img_type_radio])
-        return img_type_vbox
 
     def remove_buttons(self):
         # define remove feature radio box button
@@ -218,6 +201,18 @@ class UI:
             value="<h2>Load Segmentations on the Map</h2>",
             layout=Layout(padding="0px"),
         )
+        inital_options = ["all"]
+        classes = list(self.seg2map.get_classes())
+        classes = ["all"] + classes
+        if len(self.seg2map.get_classes()) == 0:
+            classes = inital_options
+        self.class_dropdown = Dropdown(
+            options=classes,
+            description="Select Class:",
+            value=classes[0],
+            style={"description_width": "initial"},
+        )
+
         self.load_segmentations_button = Button(
             description="Load Segmentations", style=self.load_style
         )
@@ -236,7 +231,10 @@ class UI:
             readout_format=".2f",
         )
 
-        years = ["2010", "2012", "2013", "2015"]
+        default_years = ["2021"]
+        years = self.seg2map.get_years()
+        if len(years) == 0:
+            years = default_years
         self.year_slider = SelectionSlider(
             options=years,
             value=years[0],
@@ -249,38 +247,65 @@ class UI:
 
         def year_slider_changed(change):
             year = self.year_slider.value
-            for layer in self.seg2map.original_layers + self.seg2map.seg_layers:
-                # if year in layer name and layer not on map
-                if (
-                    year in layer.name
-                    and self.seg2map.map.find_layer(layer.name) is None
-                ):
-                    self.seg2map.map.add_layer(layer)
-                if year not in layer.name and layer.name != "ROI":
-                    if layer in self.seg2map.map.layers:
-                        self.seg2map.map.remove_layer(layer)
+            seg_layers = self.seg2map.get_seg_layers()
+            original_layers = self.seg2map.get_original_layers()
+            # order matters: original layers must be before seg layer otherwise so segmentations will appear on to of image
+            layers = original_layers + seg_layers
+            self.seg2map.load_layers_by_year(layers, year)
 
         self.year_slider.observe(year_slider_changed, "value")
 
         def opacity_slider_changed(change):
+            # apply opacity to all layers
             year = self.year_slider.value
-            layer_name = ""
-            for layer in self.seg2map.seg_layers:
-                if year in layer.name:
-                    layer_name = layer.name
+            opacity = self.opacity_slider.value
+            logger.info(f"self.class_dropdown.value: {self.class_dropdown.value}")
+            print(f"self.class_dropdown.value: {self.class_dropdown.value}")
+            logger.info(f"year: {year}")
+            print(f"year: {year}")
+            if self.class_dropdown.value == "all":
+                seg_layers = self.seg2map.get_seg_layers()
+            if self.class_dropdown.value != "all":
+                # apply opacity to selected layer name
+                seg_layers = self.seg2map.get_seg_layers(self.class_dropdown.value)
 
-            value = self.opacity_slider.value
-            if layer_name != "":
-                self.seg2map.map.layer_opacity(layer_name, value)
+            if seg_layers == []:
+                return
+            self.seg2map.modify_layers_opacity_by_year(seg_layers, year, opacity)
 
         self.opacity_slider.observe(opacity_slider_changed, "value")
 
+        def handle_class_dropdown(change):
+            # apply opacity to all layers
+            logger.info(f"handle_class_dropdown: {change['new']}")
+            print(f"handle_class_dropdown: {change['new']}")
+            if change["new"] == "all":
+                year = self.year_slider.value
+                seg_layers = self.seg2map.get_seg_layers()
+                logger.info(f"seg_layers: {seg_layers}")
+                if seg_layers == []:
+                    return
+                opacity = self.opacity_slider.value
+                self.seg2map.modify_layers_opacity_by_year(seg_layers, year, opacity)
+            if change["new"] != "all":
+                # apply opacity to selected layer name
+                year = self.year_slider.value
+                seg_layers = self.seg2map.get_seg_layers(change["new"])
+                logger.info(f"seg_layers: {seg_layers}")
+                if seg_layers == []:
+                    return
+                opacity = self.opacity_slider.value
+                self.seg2map.modify_layers_opacity_by_year(seg_layers, year, opacity)
+
+        self.class_dropdown.observe(handle_class_dropdown, "value")
+
+        opacity_controls = HBox([self.opacity_slider, self.class_dropdown])
         segmentation_box = VBox(
             [
                 instr,
                 self.load_segmentations_button,
                 self.year_slider,
-                self.opacity_slider,
+                opacity_controls,
             ]
         )
         return segmentation_box
@@ -294,18 +319,15 @@ class UI:
         keys = [
             "dates",
             "sitename",
-            "download_bands",
         ]
         values = defaultdict(lambda: "unknown", settings)
         return """ 
         <h2>Settings</h2>
         <p>dates: {}</p>
         <p>sitename: {}</p>
-        <p>download_bands: {}</p>
         """.format(
             values["dates"],
             values["sitename"],
-            values["download_bands"],
         )
 
     def _create_HTML_widgets(self):
@@ -415,10 +437,9 @@ class UI:
     @settings_messages.capture(clear_output=True)
     def save_settings_clicked(self, btn):
         # Save dates selected by user
-        image_type = str(self.img_type_radio.value)
         dates = [str(self.start_date.value), str(self.end_date.value)]
         sitename = self.sitename_field.value.replace(" ", "")
-        settings = {"dates": dates, "sitename": sitename, "download_bands": image_type}
+        settings = {"dates": dates, "sitename": sitename}
         dates = [datetime.datetime.strptime(_, "%Y-%m-%d") for _ in dates]
         if dates[1] <= dates[0]:
             print("Dates are not correct chronological order")
@@ -482,14 +503,15 @@ class UI:
             try:
                 if filechooser.selected:
                     self.seg2map.load_session(filechooser.selected)
-                    if self.seg2map.years == []:
-                        self.year_slider.disabled = True
-                        self.opacity_slider.disabled = True
-                    elif self.seg2map.years != []:
-                        self.year_slider.disabled = False
-                        self.opacity_slider.disabled = False
-                        self.year_slider.options = self.seg2map.years
-                        self.year_slider.value = self.seg2map.years[0]
+                    years = self.seg2map.years
+                    classes = self.seg2map.get_classes()
+                    classes = list(classes)
+                    if classes:
+                        self.class_dropdown.options = ["all"] + classes
+                        self.class_dropdown.value = classes[0]
+                    if years:
+                        self.year_slider.options = years
+                        self.year_slider.value = years[0]
 
             except Exception as error:
                 # renders error message as a box on map
@@ -551,9 +573,7 @@ class UI:
     @debug_view.capture(clear_output=True)
     def on_save_config_clicked(self, button):
         try:
-            print("Save config clicked")
             self.seg2map.save_config()
-            print("Done!")
         except Exception as error:
             # renders error message as a box on map
             exception_handler.handle_exception(error, self.seg2map.warning_box)

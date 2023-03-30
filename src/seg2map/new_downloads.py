@@ -1,12 +1,14 @@
 import os
+import time
 import json
 import math
-from typing import List, Tuple
+from typing import List
 import platform
 import logging
 import os, json, shutil
 from glob import glob
 import concurrent.futures
+from datetime import datetime
 
 from seg2map import exceptions
 from seg2map import common
@@ -18,13 +20,7 @@ import tqdm
 import tqdm.auto
 import tqdm.asyncio
 import ee
-import zipfile
-from area import area
-import geopandas as gpd
-from shapely.geometry import LineString, MultiPolygon, Polygon
-from shapely.ops import split
-from osgeo import gdal
-
+import shapely
 
 logger = logging.getLogger(__name__)
 
@@ -166,9 +162,6 @@ async def download_file(session, url, save_location):
             print(
                 f"Timeout error occurred for {url}. Retrying with new session in 1 second... ({i + 1}/{retries})"
             )
-            logger.warning(
-                f"Timeout error occurred for {url}. Retrying with new session in 1 second... ({i + 1}/{retries})"
-            )
             await asyncio.sleep(1)
             async with aiohttp.ClientSession() as new_session:
                 return await download_file(new_session, url, save_location)
@@ -176,9 +169,6 @@ async def download_file(session, url, save_location):
             logger.error(e)
             logger.error(
                 f"Download failed for {save_location} {url}. Retrying in 1 second... ({i + 1}/{retries})"
-            )
-            logger.warning(
-                f"Timeout error occurred for {url}. Retrying with new session in 1 second... ({i + 1}/{retries})"
             )
             print(
                 f"Download failed for {url}. Retrying in 1 second... ({i + 1}/{retries})"
@@ -198,6 +188,7 @@ async def download_group(session, group, semaphore):
         filepath = os.path.abspath(tile["filepath"])
         filenames = {
             "multiband": "multiband" + str(tile_number),
+            "singleband": os.path.basename(filepath),
         }
         for tile_id in tile["ids"]:
             logger.info(f"tile_id: {tile_id}")
@@ -337,6 +328,38 @@ def run_async_function(async_callback, **kwargs) -> None:
     return result
 
 
+import json
+import math
+import logging
+import os, json, shutil
+from glob import glob
+import concurrent.futures
+from datetime import datetime
+import platform
+
+from seg2map import exceptions
+from seg2map import common
+
+from typing import List, Tuple
+
+import tqdm
+import tqdm.auto
+import zipfile
+from area import area
+import numpy as np
+import geopandas as gpd
+import asyncio
+import aiohttp
+import tqdm.asyncio
+import nest_asyncio
+from shapely.geometry import LineString, MultiPolygon, Polygon
+from shapely.ops import split
+import ee
+from osgeo import gdal
+
+logger = logging.getLogger(__name__)
+
+
 # GEE allows for 20 concurrent requests at once
 limit = asyncio.Semaphore(20)
 
@@ -408,6 +431,11 @@ def splitPolygon(polygon: gpd.GeoDataFrame, num_splitters: int) -> MultiPolygon:
     result = polygon["geometry"].iloc[0]
     for splitter in splitters:
         result = MultiPolygon(split(result, splitter))
+
+    # convert the Polygon to GeoJSON and write it to a file
+    with open("splitpolygon.geojson", "w") as outfile:
+        # json.dump(shapely.geometry.mapping(result), outfile, indent=4)
+        json.dump(shapely.to_geojson(result), outfile)
     return result
 
 
@@ -505,7 +533,10 @@ def create_tasks(
     polygon: List[tuple],
     tile_id: str,
     filepath: str,
-    filename: str,
+    multiband_filepath: str,
+    filenames: dict,
+    file_id: str,
+    download_bands: str,
 ) -> list:
     """
 
@@ -523,10 +554,17 @@ def create_tasks(
         ex: 'USDA/NAIP/DOQQ/m_4012407_se_10_1_20100612'
     filepath : str
         full path to tile directory that data will be saved to
-    filename : str
-       name of file that data will be downloaded to
+    multiband_filepath : str
+        The path to a directory will save multiband files
+    filenames : dict
+        A dictionary of filenames:
+        'singleband': name of singleband files
+        'multiband': name of multiband files
     file_id : str
         name that file will be saved as based on tile_id
+    download_bands : str
+        type of imagery to download
+        must be one of the following strings "multiband","singleband", or "both"
 
     Returns
     -------
@@ -535,21 +573,35 @@ def create_tasks(
 
     """
     tasks = []
-    task = asyncio.create_task(
-        async_download_tile(
-            session,
-            polygon,
-            tile_id,
-            filepath,
-            filename,
-            filePerBand=False,
+    if download_bands == "multiband" or download_bands == "both":
+
+        task = asyncio.create_task(
+            async_download_tile(
+                session,
+                polygon,
+                tile_id,
+                multiband_filepath,
+                filename=filenames["multiband"] + "_" + file_id,
+                filePerBand=False,
+            )
         )
-    )
-    tasks.append(task)
+        tasks.append(task)
+    if download_bands == "singleband" or download_bands == "both":
+        task = asyncio.create_task(
+            async_download_tile(
+                session,
+                polygon,
+                tile_id,
+                filepath,
+                filename=filenames["singleband"] + "_" + file_id,
+                filePerBand=False,
+            )
+        )
+        tasks.append(task)
     return tasks
 
 
-async def async_download_all_tiles(tiles_info: List[dict]) -> None:
+async def async_download_all_tiles(tiles_info: List[dict], download_bands: str) -> None:
     # creates task for each tile to be downloaded and waits for tasks to complete
     tasks = []
     for counter, tile_dict in enumerate(tiles_info):
@@ -557,7 +609,13 @@ async def async_download_all_tiles(tiles_info: List[dict]) -> None:
         filepath = os.path.abspath(tile_dict["filepath"])
         parent_dir = os.path.dirname(filepath)
         multiband_filepath = os.path.join(parent_dir, "multiband")
-        async with aiohttp.ClientSession(timeout=3000) as session:
+        filenames = {
+            "multiband": "multiband" + str(counter),
+            "singleband": os.path.basename(filepath),
+        }
+
+        timeout = aiohttp.ClientTimeout(total=3000)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             for tile_id in tile_dict["ids"]:
                 logger.info(f"tile_id: {tile_id}")
                 file_id = tile_id.replace("/", "_")
@@ -565,8 +623,6 @@ async def async_download_all_tiles(tiles_info: List[dict]) -> None:
                 year_str = file_id.split("_")[-1][:4]
                 if len(file_id.split("_")[-2]) == 8:
                     year_str = file_id.split("_")[-2][:4]
-
-                filename = "multiband" + str(counter) + "_" + file_id
                 # full path to year directory within multiband dir eg. ./multiband/2012
                 year_filepath = os.path.join(multiband_filepath, year_str)
                 logger.info(f"year_filepath: {year_filepath}")
@@ -577,8 +633,9 @@ async def async_download_all_tiles(tiles_info: List[dict]) -> None:
                         tile_id,
                         filepath,
                         year_filepath,
-                        filename,
+                        filenames,
                         file_id,
+                        download_bands,
                     )
                 )
     # show a progress bar of all the requests in progress
@@ -591,6 +648,8 @@ async def get_ids_for_tile(
     async with semaphore:
         collection = ee.ImageCollection(gee_collection)
         polygon = ee.Geometry.Polygon(tile)
+        # logger.info(f"polygon:{polygon}")
+        # logger.info(f"tile:{tile}")
         # Filter the collection to get only the images within the tile and date range
         filtered_collection = (
             collection.filterBounds(polygon)
@@ -600,6 +659,7 @@ async def get_ids_for_tile(
         # Get a list of all the image names in the filtered collection
         image_list = filtered_collection.getInfo().get("features")
         ids = [obj["id"] for obj in image_list]
+        # logger.info(f"google ids:{ids}")
         # Create a dictionary for each tile with the information about the images to be downloaded
         image_dict = {
             "polygon": tile,
@@ -788,6 +848,8 @@ async def get_tiles_for_ids(
         roi_gdf (gpd.GeoDataFrame): geodataframe of ROIs on the map
         ids (List[str]): ids of ROIs to download imagery for
         dates (Tuple[str]): start and end dates
+        download_bands (str): type of imagery to download
+            must be one of the following strings "multiband","singleband", or "both"
     """
     ROI_tiles = {}
     tasks = []
@@ -814,12 +876,14 @@ async def get_tiles_for_ids(
     return ROI_tiles
 
 
-async def async_download_ROIs(ROI_tiles: List[dict]) -> None:
+async def async_download_ROIs(ROI_tiles: List[dict], download_bands: str) -> None:
     """
     Downloads the specified bands for each ROI tile asynchronously using aiohttp and asyncio.
 
     Parameters:
     ROI_tiles (List[dict]): A list of dictionaries representing the ROI tiles to download.
+    download_bands (str): A comma-separated string of band numbers to download.
+
     Returns:
     None: This function does not return anything.
     """
@@ -829,18 +893,23 @@ async def async_download_ROIs(ROI_tiles: List[dict]) -> None:
         for ROI_tile in ROI_tiles:
             for year in ROI_tile.keys():
                 print(f"YEAR for ROI tile: {year}")
-                task = asyncio.create_task(async_download_year(ROI_tile[year], session))
+                task = asyncio.create_task(
+                    async_download_year(ROI_tile[year], download_bands, session)
+                )
                 tasks.append(task)
         # show a progress bar of all the requests in progress
         await tqdm.asyncio.tqdm.gather(*tasks, position=0, desc=f"All Downloads")
 
 
-async def async_download_year(tiles_info: List[dict], session) -> None:
+async def async_download_year(
+    tiles_info: List[dict], download_bands: str, session
+) -> None:
     """
     Downloads the specified bands for each tile in the specified year asynchronously using aiohttp and asyncio.
 
     Parameters:
     tiles_info (List[dict]): A list of dictionaries representing the tiles to download.
+    download_bands (str): A comma-separated string of band numbers to download.
     session: The aiohttp session to use for downloading.
 
     Returns:
@@ -854,6 +923,7 @@ async def async_download_year(tiles_info: List[dict], session) -> None:
         filepath = os.path.abspath(tile_dict["filepath"])
         filenames = {
             "multiband": "multiband" + str(counter),
+            "singleband": os.path.basename(filepath),
         }
         for tile_id in tile_dict["ids"]:
             logger.info(f"tile_id: {tile_id}")
@@ -868,6 +938,7 @@ async def async_download_year(tiles_info: List[dict], session) -> None:
                     filepath,
                     filenames,
                     file_id,
+                    download_bands,
                 )
             )
     # show a progress bar of all the requests in progress
@@ -875,3 +946,14 @@ async def async_download_year(tiles_info: List[dict], session) -> None:
     common.unzip_data(os.path.dirname(filepath))
     # delete any directories that were empty
     common.delete_empty_dirs(os.path.dirname(filepath))
+
+
+# call asyncio to run download_ROIs
+def run_magic_function_to_download(ROI_tiles: List[dict], download_bands: str) -> None:
+    if platform.system() == "Windows":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    # apply a nested loop to jupyter's event loop for async downloading
+    nest_asyncio.apply()
+    # get nested running loop and wait for async downloads to complete
+    loop = asyncio.get_running_loop()
+    loop.run_until_complete(async_download_ROIs(ROI_tiles, download_bands))

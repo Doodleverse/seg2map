@@ -2,6 +2,7 @@ import os
 import re
 import random
 import string
+from pathlib import Path
 import glob
 import shutil
 import json
@@ -16,12 +17,12 @@ import os, json, shutil
 from glob import glob
 import concurrent.futures
 from datetime import datetime
+from time import perf_counter
 
 # Internal dependencies imports
-from seg2map import exception_handler
+from seg2map import map_functions
 
 from tqdm.auto import tqdm
-import imageio
 import requests
 import zipfile
 from area import area
@@ -30,9 +31,11 @@ import numpy as np
 import geojson
 import matplotlib
 from leafmap import check_file_path
-import pandas as pd
 from osgeo import gdal
-
+from skimage.io import imsave
+import time
+from PIL import Image
+import rasterio
 from ipywidgets import ToggleButton
 from ipywidgets import HBox
 from ipywidgets import VBox
@@ -44,15 +47,125 @@ from ipyfilechooser import FileChooser
 logger = logging.getLogger(__name__)
 
 
-import time
-from base64 import b64encode
-from PIL import Image, ImageSequence
-from io import BytesIO
-import rasterio
-from ipyleaflet import ImageOverlay
+def time_func(func):
+    def wrapper(*args, **kwargs):
+        start = perf_counter()
+        result = func(*args, **kwargs)
+        end = perf_counter()
+        print(f"{func.__name__} took {end - start:.6f} seconds to run.")
+        return result
+
+    return wrapper
 
 
-def get_rgb_img(img_path: str) -> str:
+def find_file(path: str, filename: str = "session.json"):
+    # if session.json is found in main directory then session path was identified
+    filepath = os.path.join(path, filename)
+    if os.path.isfile(filepath):
+        return filepath
+    else:
+        parent_directory = os.path.dirname(path)
+        filepath = os.path.join(parent_directory, filename)
+        if os.path.isfile(filepath):
+            return filepath
+        else:
+            raise ValueError(
+                f"File '{filename}' not found in the parent directory: {parent_directory} or path"
+            )
+
+
+def write_greylabel_to_png(npz_location: str) -> str:
+    """
+    Given the path of an .npz file containing a 'grey_label' key with an array of uint8 values,
+    writes the array to a PNG file with the same name and location as the .npz file, with the extension
+    changed to .png. Returns the path of the PNG file.
+
+    Parameters:
+    npz_location (str): The path of the .npz file to read from.
+
+    Returns:
+    str: The path of the written PNG file.
+    """
+    png_path = npz_location.replace(".npz", ".png")
+    with np.load(npz_location) as data:
+        dat = 1 + np.round(data["grey_label"].astype("uint8"))
+    imsave(png_path, dat, check_contrast=False, compression=0)
+    return png_path
+
+
+def create_greylabel_pngs(full_path: str) -> List[str]:
+    """
+    Given a directory path, finds all .npz files in the directory, writes the 'grey_label' array of each .npz
+    file to a corresponding PNG file, and returns a list of the paths of the written PNG files.
+
+    Parameters:
+    full_path (str): The path of the directory to search for .npz files.
+
+    Returns:
+    List[str]: A list of the paths of the written PNG files.
+    """
+    png_files = []
+    npzs = sorted(glob(os.path.join(full_path, "*.npz")))
+    for npz in npzs:
+        png_files.append(write_greylabel_to_png(npz))
+    return png_files
+
+
+def get_subdirectories_with_ids(base_path: str) -> dict:
+    all_items = os.listdir(base_path)
+    subdirs_with_ids = {}
+
+    for item in all_items:
+        item_path = os.path.join(base_path, item)
+        if os.path.isdir(item_path) and item.startswith("ID_"):
+            id = item.split("_")[1]
+            subdirs_with_ids[id] = item_path
+
+    return subdirs_with_ids
+
+
+def extract_roi_id_from_path(path):
+    """
+    Extracts roi_id from a directory name in a given path.
+
+    The function assumes that the directory name is in the format "ID_{roiid}_dates_*".
+
+    Args:
+        path (str): A string representing the path to the directory containing the roi id.
+
+    Returns:
+        A string representing the extracted roi id, or None if the roi id is not found.
+    """
+    start_index = path.find("ID_") + len("ID_")
+    end_index = path.find("_dates_")
+    if start_index != -1 and end_index != -1:
+        return path[start_index:end_index]
+    else:
+        return None
+
+
+def read_text_file(file_path: str) -> List[str]:
+    """
+    Read the contents of a text file and return them as a list of strings.
+
+    Args:
+        file_path: The path to the text file to read.
+
+    Returns:
+        A list of strings representing the lines of text in the file. The list will not include any line ending characters
+        ('\n', '\r', or '\r\n').
+
+    Raises:
+        ValueError: If the file does not exist at the specified file path.
+    """
+    if not os.path.isfile(file_path):
+        raise ValueError(f"{os.path.basename(file_path)} did not exist at {file_path}")
+    with open(file_path) as f:
+        data = f.read().split("\n")
+    return data
+
+
+def convert_to_rgb(img_path: str) -> str:
     """
     Converts an image to RGB format and saves it to a new file.
     Compatable image types: '.jpg' and '.png'
@@ -63,6 +176,7 @@ def get_rgb_img(img_path: str) -> str:
     Returns:
     str: The file path of the converted image.
     """
+    logger.info(f"img_path: {img_path}")
     if img_path.endswith(".jpg"):
         im = Image.open(img_path, formats=("JPEG",)).convert("RGB")
         out_path = img_path.replace(".jpg", "_RGB.jpg")
@@ -70,7 +184,7 @@ def get_rgb_img(img_path: str) -> str:
         im = Image.open(img_path, formats=("PNG",)).convert("RGB")
         out_path = img_path.replace(".png", "_RGB.png")
     im.save(out_path)
-
+    logger.info(f"out_path: {out_path}")
     return out_path
 
 
@@ -92,7 +206,42 @@ def get_bounds(tif_path):
     return bounds
 
 
-def get_image_overlay(tif_path, jpg_path, layer_name: str):
+def get_years_in_path(full_path: Path) -> List[str]:
+    """
+    Return a list of directory names within the given directory that match the pattern of a four-digit year (e.g. '2022').
+
+    Args:
+        directory: The directory to search for year folders. This can be a string or a Path object.
+
+    Returns:
+        A list of directory names within the given directory that match the pattern of a four-digit year.
+    """
+    full_path = Path(full_path)
+    years = []
+    with os.scandir(full_path) as entries:
+        for entry in entries:
+            if entry.is_dir() and re.match(r"^\d{4}$", entry.name):
+                years.append(entry.name)
+    return years
+
+
+def find_file(dir_path, filename, case_insensitive=True):
+    if case_insensitive:
+        filename = filename.lower()
+    for file in os.listdir(dir_path):
+        if file.lower() == filename:
+            return os.path.join(dir_path, file)
+    return None
+
+
+@time_func
+def get_image_overlay(
+    tif_path,
+    image_path,
+    layer_name: str,
+    convert_RGB: bool = True,
+    file_format: str = "png",
+):
     """
     Creates an image overlay for a GeoTIFF file using a JPG image.
 
@@ -104,16 +253,18 @@ def get_image_overlay(tif_path, jpg_path, layer_name: str):
     Returns:
     ImageOverlay: An image overlay for the GeoTIFF file.
     """
+    logger.info(f"tif_path: {tif_path}")
+    logger.info(f"image_path: {image_path}")
+    logger.info(f"convert_RGB: {convert_RGB}")
+    logger.info(f"file_format: {file_format}")
     bounds = get_bounds(tif_path)
-    RGB_path = get_rgb_img(jpg_path)
-    image = Image.open(RGB_path)
-    f = BytesIO()
-    image.save(f, "JPEG")
+    # convert image to RGB
+    if convert_RGB:
+        image_path = convert_to_rgb(image_path)
 
-    data = b64encode(f.getvalue())
-    data = data.decode("ascii")
-    url = "data:image/JPEG;base64," + data
-    image_overlay = ImageOverlay(url=url, bounds=bounds, name=layer_name)
+    image_overlay = map_functions.get_overlay_for_image(
+        image_path, bounds, layer_name, file_format=file_format
+    )
     return image_overlay
 
 
@@ -126,6 +277,27 @@ class Timer:
         self.end = time.perf_counter()
         self.interval = self.end - self.start
         print(f"Elapsed time: {self.interval:.6f} seconds")
+
+
+def build_tiff(tif_path, vrt_path):
+    # then build tiff
+    ds = gdal.Translate(
+        destName=tif_path,
+        creationOptions=["NUM_THREADS=ALL_CPUS", "COMPRESS=LZW", "TILED=YES"],
+        srcDS=vrt_path,
+    )
+    ds.FlushCache()
+    ds = None
+
+
+def build_vrt(vrt_path: str, imgsToMosaic: List[str], resampleAlg: str = "mode"):
+    vrt_options = gdal.BuildVRTOptions(resampleAlg=resampleAlg)
+    try:
+        ds = gdal.BuildVRT(vrt_path, imgsToMosaic, options=vrt_options)
+        ds.FlushCache()
+        ds = None
+    except Exception as e:
+        print(f"Error building VRT file: {e}")
 
 
 def create_dir_chooser(callback, title: str = None, starting_directory: str = "data"):
@@ -211,47 +383,6 @@ def group_tif_locations(dir_path):
     return list(tif_groups.values())
 
 
-def delete_tifs_at_same_location(path):
-    multiple_tifs_same_location = [
-        tifs for tifs in group_tif_locations(path) if len(tifs) > 1
-    ]
-    delete_tifs_with_black_pixels(multiple_tifs_same_location)
-
-
-def delete_tifs_except(tif_paths, keep_tif_path):
-    for tif_path in tif_paths:
-        if tif_path != keep_tif_path:
-            os.remove(tif_path)
-
-
-def delete_tifs_with_black_pixels(tif_groups):
-    # only keep tifs where ratio of non-black pixels to total pixels is the highest
-    for tif_paths in tif_groups:
-        max_tif_path = max(tif_paths, key=get_pixel_ratio)
-        delete_tifs_except(tif_paths, max_tif_path)
-
-
-def get_pixel_ratio(tif_path):
-    """
-    Calculates the ratio of non-black pixels to total pixels in a GeoTIFF file.
-
-    Args:
-        tif_path: str - The file path to the GeoTIFF file.
-
-    Returns:
-        float - The ratio of non-black pixels to total pixels in the GeoTIFF file.
-
-    Example:
-        ratio = get_pixel_ratio("path/to/tif_file.tif")
-        # Returns a float representing the ratio of non-black pixels to total pixels in the GeoTIFF file.
-    """
-    img = imageio.imread(tif_path)
-    total_pixels = (img >= 0).sum()
-    non_black_pixels = (img > 0).sum()
-    pixel_ratio = non_black_pixels / total_pixels
-    return pixel_ratio
-
-
 def group_files(files: List[str], size: int = 2) -> List[List[str]]:
     """
     Groups a list of file paths into sublists of a specified size.
@@ -283,11 +414,16 @@ def create_merged_multispectural_for_ROIs(roi_paths: List[str]) -> None:
         year_dirs = get_matching_dirs(roi_path, pattern=r"^\d{4}$")
         for year_path in year_dirs:
             glob_str = os.path.join(year_path, "*merged_multispectral.jpg")
+            # A merged jpg has already been createed
             if len(glob(glob_str)) >= 1:
+                logger.warning(f"*merged_multispectral.jpg already exists {year_path}")
                 continue
+            # no tifs exist to merge
             if len(os.listdir(year_path)) == 0:
+                logger.warning(f"*{year_path} contains no tifs")
                 continue
             try:
+                # create merged_multispectral.jpg
                 get_merged_multispectural(year_path)
             except Exception as merge_error:
                 logger.error(f"Year: {year_path}\nmerge_error: {merge_error}")
@@ -307,29 +443,19 @@ def get_merged_multispectural(src_path: str) -> str:
     Returns:
     - The path of the merged VRT file.
     """
+    # get all the unmerged tif files
     tif_files = glob(os.path.join(src_path, "*.tif"))
     tif_files = [file for file in tif_files if "merged_multispectral" not in file]
 
     logger.info(f"Found {len(tif_files)} GeoTIFF files in {src_path}")
     logger.info(f"tif_files: {tif_files}")
-    merged_files = []
-    for idx, files in enumerate(group_files(tif_files, 4)):
-        filename = f"merged_multispectral_{idx}.vrt"
-        dst_path = os.path.join(src_path, filename)
-        merged_tif = merge_files(files, dst_path, create_jpg=False)
-        merged_files.append(merged_tif)
 
-    logger.info(f"merged_files {merged_files}")
-    dst_path = os.path.join(src_path, "merged_multispectral.vrt")
-    merged_file = merge_files(merged_files, dst_path)
-    # delete intermediate merged tifs and vrts
-    pattern = ".*merged_multispectral_\d+.*"
-    deleted_files = delete_files(pattern, src_path)
-    logger.info(f"deleted_files {deleted_files}")
+    vrt_path = os.path.join(src_path, "merged_multispectral.vrt")
+    merged_file = merge_files(tif_files, vrt_path, create_jpg=True)
     return merged_file
 
 
-def merge_files(src_files: str, dest_path: str, create_jpg: bool = True) -> str:
+def merge_files(src_files: str, vrt_path: str, create_jpg: bool = True) -> str:
     """Merge a list of GeoTIFF files into a single JPEG file.
 
     Args:
@@ -344,24 +470,22 @@ def merge_files(src_files: str, dest_path: str, create_jpg: bool = True) -> str:
         if not os.path.exists(file):
             raise FileNotFoundError(f"{file} not found.")
     try:
-        ## create vrt(virtual world format) file
-        # Create VRT file
-        vrt_options = gdal.BuildVRTOptions(
-            resampleAlg="average", srcNodata=0, VRTNodata=0
-        )
+        # create vrt(virtual world format) file
+        vrt_options = gdal.BuildVRTOptions(resampleAlg="mode", srcNodata=0, VRTNodata=0)
+        logger.info(f"dest_path: {vrt_path}")
         # creates a virtual world file using all the tifs and overwrites any pre-existing .vrt
-        virtual_dataset = gdal.BuildVRT(dest_path, src_files, options=vrt_options)
+        virtual_dataset = gdal.BuildVRT(vrt_path, src_files, options=vrt_options)
         # flushing the cache causes the vrt file to be created
         virtual_dataset.FlushCache()
         # reset the dataset object
         virtual_dataset = None
 
         # create geotiff (.tiff) from merged vrt file
-        tif_path = dest_path.replace(".vrt", ".tif")
+        tif_path = vrt_path.replace(".vrt", ".tif")
         virtual_dataset = gdal.Translate(
             tif_path,
             creationOptions=["COMPRESS=LZW", "TILED=YES"],
-            srcDS=dest_path,
+            srcDS=vrt_path,
         )
         virtual_dataset.FlushCache()
         virtual_dataset = None
@@ -369,14 +493,14 @@ def merge_files(src_files: str, dest_path: str, create_jpg: bool = True) -> str:
         if create_jpg:
             # convert .vrt to .jpg file
             virtual_dataset = gdal.Translate(
-                dest_path.replace(".vrt", ".jpg"),
+                vrt_path.replace(".vrt", ".jpg"),
                 creationOptions=["WORLDFILE=YES", "QUALITY=100"],
-                srcDS=dest_path.replace(".vrt", ".tif"),
+                srcDS=tif_path,
             )
             virtual_dataset.FlushCache()
             virtual_dataset = None
 
-        return dest_path
+        return vrt_path
     except Exception as e:
         print(e)
         logger.error(e)
@@ -415,58 +539,6 @@ def delete_files(pattern, path):
     return deleted_files
 
 
-# def merge_tifs(src_dir: str, dest_dir: str) -> str:
-#     # Check if path to destination directory exists
-#     if not os.path.exists(dest_dir):
-#         raise FileNotFoundError(f"{dest_dir} not found.")
-#     # Check if path to source exists
-#     if not os.path.exists(src_dir):
-#         raise FileNotFoundError(f"{src_dir} not found.")
-#     try:
-
-#         # Create a list of tif files in source directory
-#         tif_files = glob(os.path.join(src_dir, "*.tif"))
-#         if not tif_files:
-#             raise FileNotFoundError(f"No tif files found in {src_dir}.")
-
-#         vrt_path = os.path.join(dest_dir, "merged_multispectral.vrt")
-#         logger.info(f"vrt_path: {vrt_path}")
-
-#         ## create vrt(virtual world format) file
-#         vrtoptions = gdal.BuildVRTOptions(
-#             resampleAlg="average", srcNodata=0, VRTNodata=0
-#         )
-#         # creates a virtual world file using all the tifs and overwrites any pre-existing .vrt
-#         virtual_dataset = gdal.BuildVRT(vrt_path, tif_files, options=vrtoptions)
-#         # flushing the cache causes the vrt file to be created
-#         virtual_dataset.FlushCache()
-#         # reset the dataset object
-#         virtual_dataset = None
-
-#         # create geotiff (.tiff) from merged vrt file
-#         virtual_dataset = gdal.Translate(
-#             vrt_path.replace(".vrt", ".tif"),
-#             creationOptions=["COMPRESS=LZW", "TILED=YES"],
-#             srcDS=vrt_path,
-#         )
-#         virtual_dataset.FlushCache()
-#         virtual_dataset = None
-
-#         # convert .vrt to .jpg file
-#         virtual_dataset = gdal.Translate(
-#             vrt_path.replace(".vrt", ".jpg"),
-#             creationOptions=["WORLDFILE=YES", "QUALITY=100"],
-#             srcDS=vrt_path.replace(".vrt", ".tif"),
-#         )
-#         virtual_dataset.FlushCache()
-#         virtual_dataset = None
-#         return vrt_path
-#     except Exception as e:
-#         print(e)
-#         logger.error(e)
-#         raise e
-
-
 def gdal_translate_png_to_tiff(
     files: List[str],
     translateoptions: str = "-of JPEG -co COMPRESS=JPEG -co TFW=YES -co QUALITY=100",
@@ -493,27 +565,55 @@ def gdal_translate_png_to_tiff(
     return new_files
 
 
-def gdal_translate_jpeg(
+def move_files_resurcively(src, dest):
+    """Move all files and subdirectories from the source directory to the destination directory recursively.
+
+    Args:
+        source_dir (str): The path to the source directory.
+        destination_dir (str): The path to the destination directory.
+
+    Returns:
+        None
+    """
+    if not os.path.isdir(src):
+        os.makedirs(src)
+    if not os.path.isdir(dest):
+        os.makedirs(dest)
+    # Move all files and subdirectories from the source directory to the destination directory
+    for entry in os.scandir(src):
+        # Move the entry to the destination directory
+        shutil.move(entry.path, os.path.join(dest, entry.name))
+
+
+def gdal_translate_jpegs(
     files: List[str],
-    translateoptions: str = "-of JPEG -co COMPRESS=JPEG -co TFW=YES -co QUALITY=100",
+    translateoptions: str = None,
+    kwargs=None,
 ):
     """Convert TIFF files to JPEG files using GDAL.
 
     Args:
         files (List[str]): List of file paths to TIFF files to be converted.
-        translateoptions (str, optional): GDAL options for converting TIFF files to JPEG files. Defaults to "-of JPEG -co COMPRESS=JPEG -co TFW=YES -co QUALITY=100".
-
+        translateoptions (str, optional): GDAL options for converting TIFF files to JPEG files.
+        kwargs(dict, optional): dictionary of GDAL options for converting TIFF files to JPEG files. Options located at:
+            https://gdal.org/api/python/osgeo.gdal.html#osgeo.gdal.TranslateOptions
     Returns:
         List[str]: List of file paths to the newly created JPEG files.
     """
     new_files = []
-    for f in files:
-        jpg_file = f.replace(".tif", ".jpg")
+    for file in files:
+        jpg_file = file.replace(".tif", ".jpg")
         if os.path.exists(jpg_file):
-            print(f"File: {jpg_file} already exists")
+            logger.info(f"File: {jpg_file} already exists")
         else:
-            dst = gdal.Translate(f.replace(".tif", ".jpg"), f, options=translateoptions)
-            new_files.append(f.replace(".tif", ".jpg"))
+            if kwargs:
+                dst = gdal.Translate(jpg_file, file, **kwargs)
+                new_files.append(jpg_file)
+            elif translateoptions:
+                dst = gdal.Translate(jpg_file, file, options=translateoptions)
+                new_files.append(jpg_file)
+            else:
+                raise ValueError("Must provide value for kwargs or translateoptions.")
             dst = None  # close and save ds
     return new_files
 
@@ -783,10 +883,12 @@ def create_dir(dir_path: str, raise_error=True) -> str:
 
 
 def create_directory(file_path: str, name: str) -> str:
+    """
+    Creates a new directory with the given name in the specified file path, if it does not already exist.
+    Returns the full path to the new directory.
+    """
     new_directory = os.path.join(file_path, name)
-    # If the directory named 'name' does not exist, create it
-    if not os.path.exists(new_directory):
-        os.makedirs(new_directory)
+    os.makedirs(new_directory, exist_ok=True)
     return new_directory
 
 

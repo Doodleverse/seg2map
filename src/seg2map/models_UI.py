@@ -1,6 +1,5 @@
 # standard python imports
 import os
-import glob
 import logging
 
 # internal python imports
@@ -63,22 +62,6 @@ class UI_Models:
     # all instances of UI will share the same debug_view
     model_view = Output()
     run_model_view = Output()
-    # uav_RGB_10class_7566797: https://zenodo.org/record/7566797
-    # uav_RGB_10class_7566810: https://zenodo.org/record/7566810
-    # CoastTrain
-    # ortho_RGB_8class_7574784: https://zenodo.org/record/7574784
-    # naip_RGB_5class_7566992: https://zenodo.org/record/7566992
-    # naip_RGB_8class_7570583: https://zenodo.org/record/7570583
-    # CHESAPEAKE
-    # ortho_RGB_7class_7576904:  https://zenodo.org/record/7576904
-    # OPEN EARTH NET
-    # ortho_RGB_9class_7576894: https://zenodo.org/record/7576894
-    # DeepGlobe
-    # ortho_RGB_7clas_7576898 https://zenodo.org/record/7576898
-    # EnviroAtlas
-    # ortho_RGB_6class_7576909 https://zenodo.org/record/7576909
-    # AAAI-Buildings
-    # ortho_RGB_7class_7607895 https://zenodo.org/record/7607895
 
     def __init__(self):
         # Controls size of ROIs generated on map
@@ -166,7 +149,7 @@ class UI_Models:
         model_choices_box = HBox(
             [self.model_type_dropdown, self.model_dropdown, self.model_implementation]
         )
-        checkboxes = HBox([self.GPU_checkbox, self.otsu_radio, self.tta_radio])
+        checkboxes = HBox([self.otsu_radio, self.tta_radio])
         instr_vbox = VBox(
             [
                 self.instr_select_images,
@@ -349,18 +332,17 @@ class UI_Models:
         # gets GPU or CPU depending on whether use_GPU is True
         use_GPU = self.model_dict["use_GPU"]
         model_implementation = self.model_dict["implementation"]
-        model_name = self.model_dict["model_type"]
+        model_id = self.model_dict["model_type"]
         use_otsu = self.model_dict["otsu"]
         use_tta = self.model_dict["tta"]
 
-        zoo_model.get_GPU(use_GPU)
-        zoo_model_instance = zoo_model.Zoo_Model()
+        zoo_model_instance = zoo_model.ZooModel()
 
         zoo_model_instance.run_model(
             model_implementation,
             session_name=session_name,
             src_directory=inputs_directory,
-            model_name=model_name,
+            model_id=model_id,
             use_GPU=use_GPU,
             use_otsu=use_otsu,
             use_tta=use_tta,
