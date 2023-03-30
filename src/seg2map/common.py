@@ -33,7 +33,6 @@ from leafmap import check_file_path
 import pandas as pd
 from osgeo import gdal
 
-
 from ipywidgets import ToggleButton
 from ipywidgets import HBox
 from ipywidgets import VBox

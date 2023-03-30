@@ -1,14 +1,12 @@
 import os
-import time
 import json
 import math
-from typing import List
+from typing import List, Tuple
 import platform
 import logging
 import os, json, shutil
 from glob import glob
 import concurrent.futures
-from datetime import datetime
 
 from seg2map import exceptions
 from seg2map import common
@@ -20,6 +18,12 @@ import tqdm
 import tqdm.auto
 import tqdm.asyncio
 import ee
+import zipfile
+from area import area
+import geopandas as gpd
+from shapely.geometry import LineString, MultiPolygon, Polygon
+from shapely.ops import split
+from osgeo import gdal
 
 
 logger = logging.getLogger(__name__)
@@ -211,38 +215,6 @@ def run_async_function(async_callback, **kwargs) -> None:
     result = loop.run_until_complete(async_callback(**kwargs))
     logger.info(f"result: {result}")
     return result
-
-
-import json
-import math
-import logging
-import os, json, shutil
-from glob import glob
-import concurrent.futures
-from datetime import datetime
-import platform
-
-from seg2map import exceptions
-from seg2map import common
-
-from typing import List, Tuple
-
-import tqdm
-import tqdm.auto
-import zipfile
-from area import area
-import numpy as np
-import geopandas as gpd
-import asyncio
-import aiohttp
-import tqdm.asyncio
-import nest_asyncio
-from shapely.geometry import LineString, MultiPolygon, Polygon
-from shapely.ops import split
-import ee
-from osgeo import gdal
-
-logger = logging.getLogger(__name__)
 
 
 # GEE allows for 20 concurrent requests at once
