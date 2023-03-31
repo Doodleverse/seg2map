@@ -353,9 +353,17 @@ class ZooModel:
             best_model_filename = f.read().strip()
         # get the json data of the best model _fullmodel.h5 file
         best_json_filename = best_model_filename.replace("_fullmodel.h5", ".json")
+        best_modelcard_filename = best_model_filename.replace(
+            "_fullmodel.h5", "_modelcard.json"
+        )
 
         # download best model files(.h5, .json) file and classes.txt
-        download_filenames = ["classes.txt", best_json_filename, best_model_filename]
+        download_filenames = [
+            "classes.txt",
+            best_json_filename,
+            best_model_filename,
+            best_modelcard_filename,
+        ]
         download_dict.update(
             get_files_to_download(
                 available_files, download_filenames, model_id, model_path
@@ -396,11 +404,14 @@ class ZooModel:
             model_name.replace("_fullmodel.h5", ".json")
             for model_name in all_model_names
         ]
+        modelcard_file_names = [
+            model_name.replace("_fullmodel.h5", "_modelcard.json")
+            for model_name in all_model_names
+        ]
         all_json_reponses = []
         for available_file in available_files:
-            for json_file in json_file_names:
-                if json_file == available_file["key"]:
-                    all_json_reponses.append(available_file)
+            if available_file['key'] in json_file_names + modelcard_file_names:
+                all_json_reponses.append(available_file)
         if len(all_models_reponses) == 0:
             raise Exception(f"Cannot find any .h5 files at {model_id}")
         if len(all_json_reponses) == 0:
