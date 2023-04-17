@@ -1,15 +1,10 @@
-from typing import List
+from typing import List, Set
 import requests
 import logging
-
 import os
-import re
 import shutil
-import asyncio
-import platform
 import json
-import logging
-from typing import List, Set
+from glob import glob
 
 from seg2map import common
 from seg2map import downloads
@@ -17,14 +12,10 @@ from seg2map import sessions
 from seg2map import map_functions
 
 from skimage.io import imsave
-import requests
-
 import tqdm
 import numpy as np
-from glob import glob
 from osgeo import gdal
 import tqdm.asyncio
-from tensorflow.keras import mixed_precision
 from doodleverse_utils.prediction_imports import do_seg
 from doodleverse_utils.model_imports import (
     simple_resunet,
@@ -141,20 +132,35 @@ def rename_predictions(predictions_location):
             os.rename(prediction, new_filename)
 
 
-def make_greyscale_tif(tiles_location, tif_location):
+def make_greyscale_tif(tiles_location: str, tif_location: str) -> str:
+    """
+    Converts a set of tiled images into a greyscale mosaic TIFF file.
+
+    Args:
+    tiles_location (str): Path to the directory containing the input tiled images.
+    tif_location (str): Path to the directory where the output TIFF file will be saved.
+
+    Returns:
+    str: The path to the generated greyscale mosaic TIFF file.
+
+    Raises:
+    None.
+    """
     logger.info(f"tiles_location: {tiles_location}")
     logger.info(f"tif_location: {tif_location}")
     outputs_path = os.path.join(tiles_location, "out")
     logger.info(f"outputs_path: {outputs_path}")
+    # copy xmls to the out folder
     copy_xmls(tiles_location, outputs_path)
     rename_xmls(outputs_path, ".jpg.aux.xml", ".png.aux.xml")
     rename_predictions(outputs_path)
+    # create pngs from the npz files (segmentations)
     imgsToMosaic = create_greylabel_pngs(outputs_path)
     if len(imgsToMosaic) == 0:
         logger.warning("No segmented images were found")
         return ""
+    # rename the segmented images
     rename_xmls(outputs_path, ".png", "_res.png")
-
     outVRT = os.path.join(tif_location, "Mosaic_greyscale.vrt")
     outTIF = os.path.join(tif_location, "Mosaic_greyscale.tif")
     common.build_vrt(outVRT, imgsToMosaic, resampleAlg="mode")
@@ -410,7 +416,7 @@ class ZooModel:
         ]
         all_json_reponses = []
         for available_file in available_files:
-            if available_file['key'] in json_file_names + modelcard_file_names:
+            if available_file["key"] in json_file_names + modelcard_file_names:
                 all_json_reponses.append(available_file)
         if len(all_models_reponses) == 0:
             raise Exception(f"Cannot find any .h5 files at {model_id}")
@@ -668,6 +674,19 @@ class ZooModel:
         self,
         preprocessed_data: dict,
     ):
+        """
+        Computes the segmentation of the input multispectral images using the preprocessed data.
+
+        Args:
+            preprocessed_data (dict): A dictionary containing the preprocessed data that's in a format that's
+            ready for segmentation.
+
+        Returns:
+            None.
+
+        Raises:
+            None.
+        """
         # perform segmentations for each year in each ROI
         for roi_data in preprocessed_data.values():
             for key in roi_data.keys():
@@ -704,8 +723,23 @@ class ZooModel:
                     )
 
     def postprocess_data(self, preprocessed_data: dict, session: sessions.Session):
+        """
+        Preprocesses the outputs of the model by preparing moving the outputs to the session directory and creating a mask for each
+        class in the output. For example if the model outputs 3 classes then this will create 3 masks for each year in each ROI.
+
+        Args:
+            src_directory (str): The path to the directory containing the multispectral images to be segmented.
+            model_dict (dict): A dictionary containing the model configuration.
+            session (sessions.Session): A session object to keep track of segmentation parameters and results.
+
+        Returns:
+            dict: A dictionary containing the preprocessed the outputs of the model.
+
+        Raises:
+            None.
+        """
         # get roi_ids
-        for roi_id, roi_data in preprocessed_data.items():
+        for roi_id in preprocessed_data.keys():
             # create session roi directories
             roi_session_directory = common.create_directory(session.path, roi_id)
             # copy config files to session directory
@@ -748,7 +782,7 @@ class ZooModel:
                 # create class mask pngs for each merged tif
                 # get class names to create class mapping
                 class_mapping = map_functions.get_class_mapping(session.classes)
-                # see if any class masks already exist in directory
+                # see if any class masks already exist in directory and if they don't exist then create them
                 class_masks_filenames = map_functions.get_existing_class_files(
                     year_session_directory, session.classes
                 )
@@ -764,7 +798,20 @@ class ZooModel:
         common.write_to_json(preprocessed_data_path, preprocessed_data)
         session.save(session.path)
 
-    def copy_configs(self, src, dst):
+    def copy_configs(self, src: str, dst: str) -> None:
+        """
+        Copies 'config.geojson' and 'config.json' files from the source to the destination directories.
+
+        Args:
+            src (str): The path to the directory containing the source files.
+            dst (str): The path to the directory where the files will be copied.
+
+        Returns:
+            None.
+
+        Raises:
+            None.
+        """
         # copy config.geojson and config.json files from souce to destination directories
         config_gdf_path = common.find_config_json(src, r"config_gdf.*\.geojson")
         config_json_path = common.find_config_json(src, r"^config\.json$")
@@ -775,7 +822,19 @@ class ZooModel:
         logger.info(f"dst_config.json: {dst_file}")
         shutil.copy(config_json_path, dst_file)
 
-    def get_classes(self, model_directory_path: str):
+    def get_classes(self, model_directory_path: str) -> list:
+        """
+        Reads the 'classes.txt' file from the given model directory path and returns a list of classes.
+
+        Args:
+            model_directory_path (str): The path to the directory containing the model files.
+
+        Returns:
+            list: A list of classes.
+
+        Raises:
+            None.
+        """
         class_path = os.path.join(model_directory_path, "classes.txt")
         classes = common.read_text_file(class_path)
         return classes

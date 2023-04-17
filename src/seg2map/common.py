@@ -234,7 +234,7 @@ def find_file(dir_path, filename, case_insensitive=True):
     return None
 
 
-@time_func
+# @time_func
 def get_image_overlay(
     tif_path,
     image_path,
