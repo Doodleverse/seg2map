@@ -258,7 +258,7 @@ class UI_Models:
 
         self.instr_select_images = HTML(
             value="<b>1. Select Images</b> \
-                <br> - Select multiband directory within an ROI directory",
+                <br> - Select an ROI directory or a directory containing at least one ROI subdirectory.\nExample: ./data/dataset1/ID_e7CxBi_dates_2010-01-01_to_2014-12-31",
             layout=Layout(margin="0px 0px 0px 20px"),
         )
 
@@ -325,9 +325,14 @@ class UI_Models:
                 "Must click 'Select Images' first",
             )
             return
+        if not common.check_id_subdirectories_exist(inputs_directory):
+            self.launch_error_box(
+                "Cannot Run Model",
+                "You must select a directory that contains ROI subdirectories. Example ROI name: 'ID_e7CxBi_dates_2010-01-01_to_2014-12-31'",
+            )
+            return
         # Disable run and open results buttons while the model is running
-        # self.open_results_button.disabled = True
-        # self.run_model_button.disabled = True
+        self.run_model_button.disabled = True
 
         # gets GPU or CPU depending on whether use_GPU is True
         use_GPU = self.model_dict["use_GPU"]
@@ -337,19 +342,19 @@ class UI_Models:
         use_tta = self.model_dict["tta"]
 
         zoo_model_instance = zoo_model.ZooModel()
-
-        zoo_model_instance.run_model(
-            model_implementation,
-            session_name=session_name,
-            src_directory=inputs_directory,
-            model_id=model_id,
-            use_GPU=use_GPU,
-            use_otsu=use_otsu,
-            use_tta=use_tta,
+        try:
+            zoo_model_instance.run_model(
+                model_implementation,
+                session_name=session_name,
+                src_directory=inputs_directory,
+                model_id=model_id,
+                use_GPU=use_GPU,
+                use_otsu=use_otsu,
+                use_tta=use_tta,
         )
-        # # Enable run and open results buttons when model has executed
-        # self.run_model_button.disabled = False
-        # self.open_results_button.disabled = False
+        finally:
+            # Enable run and open results buttons when model has executed
+            self.run_model_button.disabled = False
 
     @run_model_view.capture(clear_output=True)
     def open_results_button_clicked(self, button):
