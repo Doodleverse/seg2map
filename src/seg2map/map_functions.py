@@ -167,7 +167,7 @@ def generate_color_map(num_colors: int) -> dict:
     return color_map
 
 
-@time_func
+# @time_func
 def generate_class_masks(file: str, class_mapping: dict, save_path: str) -> List[str]:
     """
     Generate binary masks for each class in the given grayscale image, based on a color-to-class mapping.
