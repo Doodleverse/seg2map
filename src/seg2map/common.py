@@ -110,18 +110,92 @@ def create_greylabel_pngs(full_path: str) -> List[str]:
         png_files.append(write_greylabel_to_png(npz))
     return png_files
 
+def validate_is_roi_directory(base_path: str) -> bool:
+    """
+    Validates if the given base_path is a Region of Interest (ROI) directory by checking for the presence of
+    both a "multiband" subdirectory and a "config" file.
+
+    Args:
+        base_path (str): The path to the base directory to be validated.
+
+    Returns:
+        bool: True if base_path contains the "multiband" subdirectory and the "config" file, otherwise False.
+    """
+    
+    # Flags to check for the existence of the required items
+    has_mulitband = False
+    has_config = False
+
+    # Iterate over items in the directory
+    for item in base_path.iterdir():
+        # Check if the item is a directory and starts with "multiband"
+        if item.is_dir() and item.name.startswith("multiband"):
+            has_mulitband = True
+
+        # Check if the item is a file and starts with "config"
+        if item.is_file() and item.name.startswith("config"):
+            has_config = True
+
+    # Return True if both the "multiband" directory and the "config" file are found in base_path
+    return has_mulitband and has_config
 
 def get_subdirectories_with_ids(base_path: str) -> dict:
-    all_items = os.listdir(base_path)
+    """
+    This function takes a base path as input and returns a dictionary containing
+    the IDs and paths of the parent directory as well as any subdirectories that start with "ID_".
+    
+    Args:
+        base_path (str): The base path to search for subdirectories.
+        
+    Returns:
+        dict: A dictionary with IDs as keys and subdirectory paths as values.
+    """
+    base_path = Path(base_path)
     subdirs_with_ids = {}
 
-    for item in all_items:
-        item_path = os.path.join(base_path, item)
-        if os.path.isdir(item_path) and item.startswith("ID_"):
-            id = item.split("_")[1]
-            subdirs_with_ids[id] = item_path
+    if base_path.exists():
+        if base_path.is_dir() and base_path.name.startswith("ID_"):
+            # make sure this is a valid ROI directory and not just a directory with an ID
+            if validate_is_roi_directory(base_path):
+                    roi_id = base_path.name.split("_")[1]
+                    subdirs_with_ids[roi_id]=str(base_path)
+
+    for item in base_path.iterdir():
+        if item.is_dir() and item.name.startswith("ID_"):
+            roi_id = item.name.split("_")[1]
+            subdirs_with_ids[roi_id] = str(item)
 
     return subdirs_with_ids
+
+def check_id_subdirectories_exist(base_path: str) -> bool:
+    """
+    Check if any subdirectories with names starting with "ID_" exist in the given base_path.
+
+    Args:
+        base_path (str): The absolute or relative path to the directory to look in.
+
+    Returns:
+        bool: True if any subdirectories with names starting with "ID_" are found, otherwise False.
+    """
+    # Check if the given base_path exists
+    if not os.path.exists(base_path):
+        return False
+
+    # Convert base_path to a Path object
+    base_path = Path(base_path)
+
+    # Check if the base_path itself meets the condition
+    if base_path.is_dir() and base_path.name.startswith("ID_"):
+        return True
+
+    # Iterate over the items in the base_path
+    for item in base_path.iterdir():
+        # Check if the item is a subdirectory and if its name starts with "ID_"
+        if item.is_dir() and item.name.startswith("ID_"):
+            return True
+
+    # If no subdirectories with names starting with "ID_" are found, return False
+    return False
 
 
 def extract_roi_id_from_path(path):
