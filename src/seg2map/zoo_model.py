@@ -1,4 +1,4 @@
-from typing import Dict, List, Set
+from typing import Dict, List, Optional, Set
 from typing import Dict, Any
 import requests
 import logging
@@ -88,6 +88,7 @@ def process_year_directory(year_dir: str, model_dict: Dict[str, Any]) -> Dict[st
     if len(os.listdir(year_dir)) == 0:
         logger.warning(f"len(os.listdir({year_dir})) == 0")
         return {}
+    # everything after this assumes that the directory is not empty
     # Construct the file path to the original merged multispectral image
     original_merged_tif = os.path.join(year_dir, "merged_multispectral.tif")
     # Create a new "tiles" directory within the year_dir
@@ -95,8 +96,8 @@ def process_year_directory(year_dir: str, model_dict: Dict[str, Any]) -> Dict[st
     # Generate overlapping tiles from the original merged multispectral image and get the new tiles path
     tiles_path = create_overlapping_tiles(original_merged_tif, tiles_path)
     # Check if the returned tiles_path is empty or None, log a warning and return an empty dictionary if true
-    if tiles_path == "" or tiles_path is None:
-        logger.warning(f"Empty or None tiles_path for {year_dir}")
+    if not tiles_path:
+        logger.warning(f"Overlap operation failed for {year_dir} for merged tif: {original_merged_tif}")
         return {}
     # Create a copy of the model dictionary and update the sample directory with the new tiles path
     model_year_dict = model_dict.copy()
@@ -259,26 +260,74 @@ def make_greyscale_tif(tiles_location: str, tif_location: str) -> str:
     common.build_tiff(outTIF, outVRT)
     return outTIF
 
+def gdal_retile(tif_path: str, tiles_path: str, OVERLAP_PX: Optional[int] = None, TARGET_SIZE: int = 768)->str:
+    """
+    Retiles a merged GeoTIFF file into smaller overlapping tiles of the specified size.
+
+    Args:
+        tif_path (str): Path to the input GeoTIFF file.
+        tiles_path (str): Output directory where generated tiles will be saved.
+        OVERLAP_PX (int, optional): Number of pixels to overlap between tiles. Defaults to None, which calculates the overlap as half of the target tile size.
+        TARGET_SIZE (int, optional): Target size of each tile in pixels (width and height). Defaults to 768.
+
+    Returns:
+        str: The output directory where the generated tiles are saved.
+
+    Raises:
+        Exception: If an error occurs during the retile process.
+    """
+    try:
+        # retile merged tif and create tiles with overlap
+        if not OVERLAP_PX:
+            OVERLAP_PX = TARGET_SIZE // 2
+        # run retile script with system command. retiles merged_multispectral.tif to become many tif files that overlap each other
+        cmd = f"python gdal_retile.py -r near -ot Byte -ps {TARGET_SIZE} {TARGET_SIZE} -overlap {OVERLAP_PX} -co 'tiled=YES' -targetDir {tiles_path} {tif_path}"
+        os.system(cmd)
+        # return location of tiles that were created
+    except Exception as e:
+        logger.error(f"{e}\ntif_path: {tif_path}\n tiles_path: {tiles_path}\n OVERLAP_PX: {OVERLAP_PX}\n TARGET_SIZE: {TARGET_SIZE}")
+        raise e
+    return tiles_path
 
 def create_overlapping_tiles(
     tif_path: str, tiles_path: str, OVERLAP_PX: int = None, TARGET_SIZE: int = 768
-):
-    # retile merged tif and create jpgs ready for model
-    if not OVERLAP_PX:
-        OVERLAP_PX = TARGET_SIZE // 2
-    # run retile script with system command. retiles merged_multispectral.tif to have overlap
-    cmd = f"python gdal_retile.py -r near -ot Byte -ps {TARGET_SIZE} {TARGET_SIZE} -overlap {OVERLAP_PX} -co 'tiled=YES' -targetDir {tiles_path} {tif_path}"
-    os.system(cmd)
-    tif_files = glob(os.path.join(tiles_path, "*.tif"))
-    kwargs = {"format": "JPEG", "outputType": gdal.GDT_Byte}
-    # create jpgs for new tifs
-    common.gdal_translate_jpegs(tif_files, kwargs=kwargs)
-    # delete tif files
+)->str:
+    """
+    Creates overlapping tiles of a GeoTIFF file and converts them to JPEG format.
+
+    Args:
+        tif_path (str): Path to the input GeoTIFF file.
+        tiles_path (str): Output directory where generated tiles will be saved.
+        OVERLAP_PX (int, optional): Number of pixels to overlap between tiles. Defaults to None, which calculates the overlap as half of the target tile size.
+        TARGET_SIZE (int, optional): Target size of each tile in pixels (width and height). Defaults to 768.
+
+    Returns:
+        str: The output directory where the generated overlapping JPEG tiles are saved.
+
+    Raises:
+        FileNotFoundError: If the input GeoTIFF file is not found.
+    """
+    if not os.path.exists(tif_path):
+        raise FileNotFoundError(f"File {tif_path} does not exist")
+    # retile merged tif to create tifs with overlap
+    tiles_location = gdal_retile(tif_path, tiles_path, OVERLAP_PX, TARGET_SIZE)
+    tif_files = glob(os.path.join(tiles_location, "*.tif"))
+    if not tif_files:
+        logger.error(f"Overlap failed. No tif files were found in {tiles_location}")
+        raise Exception(f"Overlap failed. No tif files were found in {tiles_location}")
+        return ""
+    
+    jpeg_kwargs = {"format": "JPEG", "outputType": gdal.GDT_Byte}
+    # Convert tif files to jpgs
+    jpg_files = common.gdal_translate_jpegs(tif_files, kwargs=jpeg_kwargs)
+    if not jpg_files:
+        logger.error(f"Overlap failed. No jpg files were found in {tiles_location}")
+        raise Exception(f"Overlap failed. No tif files were found in {tiles_location}")
+        return ""
+    # delete tif files to save space
     for file in tif_files:
         os.remove(file)
-    if len(os.listdir(tiles_path)) == 0:
-        logger.warning(f"{tiles_path} is empty. No tiles were created.")
-        return None
+    # return location of overlapping jpgs that were created
     return tiles_path
 
 

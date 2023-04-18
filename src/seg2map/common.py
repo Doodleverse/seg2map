@@ -672,24 +672,25 @@ def gdal_translate_jpegs(
         kwargs(dict, optional): dictionary of GDAL options for converting TIFF files to JPEG files. Options located at:
             https://gdal.org/api/python/osgeo.gdal.html#osgeo.gdal.TranslateOptions
     Returns:
-        List[str]: List of file paths to the newly created JPEG files.
+        List[str]: List of file paths to the JPEG files.
     """
-    new_files = []
+    jpg_files = []
     for file in files:
         jpg_file = file.replace(".tif", ".jpg")
         if os.path.exists(jpg_file):
             logger.info(f"File: {jpg_file} already exists")
+            jpg_files.append(jpg_file)
         else:
             if kwargs:
                 dst = gdal.Translate(jpg_file, file, **kwargs)
-                new_files.append(jpg_file)
+                jpg_files.append(jpg_file)
             elif translateoptions:
                 dst = gdal.Translate(jpg_file, file, options=translateoptions)
-                new_files.append(jpg_file)
+                jpg_files.append(jpg_file)
             else:
                 raise ValueError("Must provide value for kwargs or translateoptions.")
             dst = None  # close and save ds
-    return new_files
+    return jpg_files
 
 
 def rename_files(directory: str, pattern: str, new_name: str, replace_name: str):
