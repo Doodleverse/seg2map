@@ -281,7 +281,9 @@ def gdal_retile(tif_path: str, tiles_path: str, OVERLAP_PX: Optional[int] = None
         if not OVERLAP_PX:
             OVERLAP_PX = TARGET_SIZE // 2
         # run retile script with system command. retiles merged_multispectral.tif to become many tif files that overlap each other
-        cmd = f"python gdal_retile.py -r near -ot Byte -ps {TARGET_SIZE} {TARGET_SIZE} -overlap {OVERLAP_PX} -co 'tiled=YES' -targetDir {tiles_path} {tif_path}"
+        # cmd = f"python gdal_retile.py -r near -ot Byte -ps {TARGET_SIZE} {TARGET_SIZE} -overlap {OVERLAP_PX} -co 'tiled=YES' -targetDir {tiles_path} {tif_path}"
+        cmd = f"python gdal_retile.py -r near -ot Byte -ps {TARGET_SIZE} {TARGET_SIZE} -overlap {OVERLAP_PX} -co 'BLOCKXSIZE={TARGET_SIZE}' -co 'BLOCKYSIZE={TARGET_SIZE}' -targetDir {tiles_path} {tif_path}"
+        logger.info(f"overlap command: {cmd}")
         os.system(cmd)
         # return location of tiles that were created
     except Exception as e:
@@ -307,8 +309,9 @@ def create_overlapping_tiles(
     Raises:
         FileNotFoundError: If the input GeoTIFF file is not found.
     """
+    # this means the directory is empty
     if not os.path.exists(tif_path):
-        raise FileNotFoundError(f"File {tif_path} does not exist")
+        return ""
     # retile merged tif to create tifs with overlap
     tiles_location = gdal_retile(tif_path, tiles_path, OVERLAP_PX, TARGET_SIZE)
     tif_files = glob(os.path.join(tiles_location, "*.tif"))
