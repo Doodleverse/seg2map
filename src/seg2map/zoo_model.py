@@ -713,7 +713,11 @@ class ZooModel:
                     )
     
                 model.compile(optimizer="adam", loss=dice_coef_loss(self.NCLASSES))
-                model.load_weights(str(weights_path))
+                try:
+                    model.load_weights(str(weights_path))
+                except Exception as e:
+                    logger.info(f"Error loading the weights files {weights_path}\n Error {e}")
+                    raise Exception(f"Error loading the weights files {weights_path}.\n This is likely due to a download error, try deleting the model from downloaded_models and try again.\n Error {e}")
     
             model_types.append(MODEL)
             model_list.append(model)
