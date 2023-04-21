@@ -581,7 +581,7 @@ def merge_files(src_files: str, vrt_path: str, create_jpg: bool = True) -> str:
         raise e
 
 
-def delete_files(pattern, path):
+def delete_files(pattern, path,recursive=True):
     """
     Deletes all files in the directory tree rooted at `path` that match the given `pattern`.
 
@@ -596,17 +596,25 @@ def delete_files(pattern, path):
         ValueError: If the `path` does not exist.
 
     Example:
-        >>> delete_files(r'\.txt$', '/path/to/directory')
+        # delete all the txt files in a directory tree
+        >>> delete_files(r".+\.txt$", '/path/to/directory')
         ['/path/to/directory/file1.txt', '/path/to/directory/subdir/file2.txt']
     """
     if not os.path.exists(path):
         raise ValueError(f"Path {path} does not exist")
 
     deleted_files = []
-    for dirpath, dirnames, filenames in os.walk(path):
-        for filename in filenames:
+    if recursive:
+        for dirpath, dirnames, filenames in os.walk(path):
+            for filename in filenames:
+                if re.match(pattern, filename):
+                    full_path = os.path.join(dirpath, filename)
+                    os.remove(full_path)
+                    deleted_files.append(full_path)
+    else: # not recursive
+        for filename in os.listdir(path):
             if re.match(pattern, filename):
-                full_path = os.path.join(dirpath, filename)
+                full_path = os.path.join(path, filename)
                 os.remove(full_path)
                 deleted_files.append(full_path)
 
@@ -816,17 +824,6 @@ def get_matching_dirs(dir_path: str, pattern: str = r"^\d{4}$") -> List[str]:
             matching_dirs.append(root)
     return matching_dirs
 
-
-# def delete_empty_directories(directory):
-#     for root, dirs, files in os.walk(directory, topdown=False):
-#         for dir in dirs:
-#             dir_path = os.path.join(root, dir)
-#             try:
-#                 os.rmdir(dir_path)
-#                 print(f"Deleted empty directory: {dir_path}")
-#             except OSError:
-#                 # If the directory is not empty, skip it
-#                 pass
 
 
 def remove_zip_files(paths):
