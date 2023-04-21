@@ -123,6 +123,8 @@ async def download_with_retry(semaphore: asyncio.Semaphore, session: aiohttp.Cli
             
             # this means X-RateLimit-Remaining was 0 and we need to wait
             if rate_limit_remaining == 0 or response.status == 429:
+                content = response.content
+                logger.info("Response from API:", content)
                 # by default, wait for 60 seconds or the number of seconds specified in the Retry-After header
                 retry_after = int(response.headers.get("Retry-After", 60))
                 logger.info(f"retry_after: {retry_after}")
