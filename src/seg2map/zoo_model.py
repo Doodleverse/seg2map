@@ -282,7 +282,8 @@ def gdal_retile(tif_path: str, tiles_path: str, OVERLAP_PX: Optional[int] = None
             OVERLAP_PX = TARGET_SIZE // 2
         # run retile script with system command. retiles merged_multispectral.tif to become many tif files that overlap each other
         # cmd = f"python gdal_retile.py -r near -ot Byte -ps {TARGET_SIZE} {TARGET_SIZE} -overlap {OVERLAP_PX} -co 'tiled=YES' -targetDir {tiles_path} {tif_path}"
-        cmd = f"python gdal_retile.py -r near -ot Byte -ps {TARGET_SIZE} {TARGET_SIZE} -overlap {OVERLAP_PX} -co 'BLOCKXSIZE={TARGET_SIZE}' -co 'BLOCKYSIZE={TARGET_SIZE}' -targetDir {tiles_path} {tif_path}"
+        # cmd = f"python gdal_retile.py -r near -ot Byte -ps {TARGET_SIZE} {TARGET_SIZE} -overlap {OVERLAP_PX} -co 'TILED=YES' -co 'BLOCKXSIZE={TARGET_SIZE}' -co 'BLOCKYSIZE={TARGET_SIZE}' -targetDir {tiles_path} {tif_path}"
+        cmd = f"python gdal_retile.py -r near -ot Byte -ps {TARGET_SIZE} {TARGET_SIZE} -overlap {OVERLAP_PX} -targetDir {tiles_path} {tif_path}"
         logger.info(f"overlap command: {cmd}")
         os.system(cmd)
         # return location of tiles that were created
@@ -858,18 +859,23 @@ class ZooModel:
                     continue
                 session.add_years(year_key)
                 year_session_directory = common.create_directory(roi_session_directory, year_key)
-                tiles_path = preprocessed_data[roi_id][year_key]["sample_direc"]
-                session_tiles_path = common.create_directory(year_session_directory, "tiles")
-                common.move_files_resurcively(src=tiles_path, dest=session_tiles_path)
-                if os.path.basename(tiles_path).lower() == "tiles":
-                    os.rmdir(tiles_path)
                 model_settings_path = os.path.join(year_session_directory, "model_settings.json")
                 common.write_to_json(model_settings_path, preprocessed_data[roi_id][year_key])
-
-                greyscale_tif = make_greyscale_tif(session_tiles_path, year_session_directory)
+                tiles_path = preprocessed_data[roi_id][year_key]["sample_direc"]
+                session_tiles_path = common.create_directory(year_session_directory, "tiles")
+                # create greyscale tif at the session_tiles_path
+                greyscale_tif = make_greyscale_tif(tiles_path, year_session_directory)
                 if not greyscale_tif:
                     logger.info(f"Year {year_key} could not generate a greyscale tif")
                     continue
+                # delete the jpgs and xmls in tiles directory, but not the out subdirectory
+                common.delete_files(r".+\.jpg$",tiles_path,recursive=False)
+                common.delete_files(r".+\.xml$",tiles_path,recursive=False)
+                # move the segmentations from the tiles directory to the session_tiles_path
+                common.move_files_resurcively(src=tiles_path, dest=session_tiles_path)
+                # delete the tiles directory
+                if os.path.basename(tiles_path).lower() == "tiles":
+                    os.rmdir(tiles_path)
 
                 class_mapping = map_functions.get_class_mapping(session.classes)
                 class_masks_filenames = map_functions.get_existing_class_files(year_session_directory, session.classes)
