@@ -558,7 +558,7 @@ def merge_files(src_files: str, vrt_path: str, create_jpg: bool = True) -> str:
         tif_path = vrt_path.replace(".vrt", ".tif")
         virtual_dataset = gdal.Translate(
             tif_path,
-            creationOptions=["COMPRESS=LZW", "TILED=YES"],
+            creationOptions=["COMPRESS=LZW", "TILED=YES",],
             srcDS=vrt_path,
         )
         virtual_dataset.FlushCache()
@@ -568,7 +568,7 @@ def merge_files(src_files: str, vrt_path: str, create_jpg: bool = True) -> str:
             # convert .vrt to .jpg file
             virtual_dataset = gdal.Translate(
                 vrt_path.replace(".vrt", ".jpg"),
-                creationOptions=["WORLDFILE=YES", "QUALITY=100"],
+                options= "-of JPEG -co QUALITY=100 -b 1 -b 2 -b 3",
                 srcDS=tif_path,
             )
             virtual_dataset.FlushCache()
@@ -623,7 +623,7 @@ def delete_files(pattern, path,recursive=True):
 
 def gdal_translate_png_to_tiff(
     files: List[str],
-    translateoptions: str = "-of JPEG -co COMPRESS=JPEG -co TFW=YES -co QUALITY=100",
+    translateoptions: str = "-of JPEG -co COMPRESS=JPEG -co PHOTOMETRIC=RGB -co TFW=YES -co QUALITY=100",
 ):
     """Convert TIFF files to JPEG files using GDAL.
 
@@ -683,6 +683,8 @@ def gdal_translate_jpegs(
         List[str]: List of file paths to the JPEG files.
     """
     jpg_files = []
+    # Set GDAL_JPEG_TO_RGB to YES
+    gdal.SetConfigOption("GDAL_JPEG_TO_RGB", "YES")
     for file in files:
         jpg_file = file.replace(".tif", ".jpg")
         if os.path.exists(jpg_file):
@@ -690,6 +692,7 @@ def gdal_translate_jpegs(
             jpg_files.append(jpg_file)
         else:
             if kwargs:
+                jpeg_kwargs = {"format": "JPEG", "outputType": gdal.GDT_Byte}
                 dst = gdal.Translate(jpg_file, file, **kwargs)
                 jpg_files.append(jpg_file)
             elif translateoptions:
