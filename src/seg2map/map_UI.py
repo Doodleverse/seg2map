@@ -13,6 +13,7 @@ from IPython.display import display
 from ipyfilechooser import FileChooser
 
 from google.auth import exceptions as google_auth_exceptions
+from ipywidgets import Box
 from ipywidgets import Button
 from ipywidgets import ToggleButton
 from ipywidgets import HBox
@@ -137,14 +138,22 @@ class UI:
         )
         settings_button = Button(description="Save Settings", style=self.action_style)
         settings_button.on_click(self.save_settings_clicked)
+        box_layout =  Layout(width='430px',
+            height='65px',
+            flex_flow='row',
+            overflow='auto',
+            display='flex')
 
+        # scrollable output to store message in
+        scrollable_output = Box(children=[UI.settings_messages], layout=box_layout)
+        
         # create settings vbox
         settings_vbox = VBox(
             [
                 dates_vbox,
                 self.sitename_field,
                 settings_button,
-                UI.settings_messages,
+                scrollable_output,
             ]
         )
 
@@ -315,11 +324,6 @@ class UI:
         settings: dict,
     ):
         # Modifies setttings html
-        default = "unknown"
-        keys = [
-            "dates",
-            "sitename",
-        ]
         values = defaultdict(lambda: "unknown", settings)
         return """ 
         <h2>Settings</h2>
