@@ -4,6 +4,9 @@
 
 ![](https://user-images.githubusercontent.com/3596509/194389595-82ade668-daf0-4d24-b1a0-6ecf897f40fe.gif)
 
+![separate_seg_controls_demo (1)](https://github.com/Doodleverse/seg2map/assets/61564689/d527fe8c-c3f2-4c62-b448-e581162e8475)
+
+
 ## Overview:
 * Seg2Map facilitates application of Deep Learning-based image segmentation models and apply them to high-resolution (~1m or less spatial footprint) geospatial imagery, in order to make high-resolution label maps. Please see our [wiki](https://github.com/Doodleverse/seg2map/wiki) for more information.
 
