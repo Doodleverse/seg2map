@@ -82,16 +82,8 @@ conda clean --all
 
 First, you need to request access to Google Earth Engine at https://signup.earthengine.google.com/. It takes about 1 day for Google to approve requests.
 
-2. Authenticate with earthengine
 
-Once your request has been approved, with the `seg2map` environment activated, run the following command on the Anaconda Prompt(or terminal) to link your environment to the GEE server:
-``` bash
-earthengine authenticate
-```
-A web browser will open, login with a gmail account and accept the terms and conditions. Then copy the authorization code into the Anaconda terminal. In the latest version of the earthengine-api, the authentication is done with gcloud. If an error is raised about gcloud missing, go to https://cloud.google.com/sdk/docs/install and install gcloud. After you have installed it, close the Anaconda Prompt and restart it, then activate the environment before running earthengine authenticate again. 
-
-
-3. Activate your conda environment
+2. Activate your conda environment
 
    ```bash
    conda activate seg2map
@@ -100,12 +92,12 @@ A web browser will open, login with a gmail account and accept the terms and con
 - If you have successfully activated seg2map you should see that your terminal's command line prompt should now start with `(seg2map)`.
 
 
-4. Install the seg2map from PyPi
+3. Install the seg2map from PyPi
    ```bash
    cd <location you downloaded seg2map>
    ex: cd C:\1_repos\seg2map
    ```
-5. Launch Jupyter Lab
+4. Launch Jupyter Lab
 - make you run this command in the seg2map directory so you can choose a notebook to use.
    ```bash
    jupyter lab
@@ -113,7 +105,7 @@ A web browser will open, login with a gmail account and accept the terms and con
 
 ## Features
 ### 1. Download Imagery from Google Earth Engine
-
+Use google earth engine to download multiple years worth of imagery.
 ![download_imagery_demo](https://github.com/Doodleverse/seg2map/assets/61564689/a36421de-e6d2-4a3f-8c08-2e47be99e3e0)
 
 
