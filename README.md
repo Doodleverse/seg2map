@@ -111,7 +111,16 @@ A web browser will open, login with a gmail account and accept the terms and con
    jupyter lab
    ```
 
+## Features
+### 1. Download Imagery from Google Earth Engine
+### 2. Apply Models to Imagery
 
+![apply_model_demo](https://github.com/Doodleverse/seg2map/assets/61564689/75c55659-56f4-46f3-892d-6bebdcd6a653)
+
+
+### 3. Load Segmented Imagery onto the Map
+
+![load_segmentation_demo](https://github.com/Doodleverse/seg2map/assets/61564689/d6bbf3ba-a8a9-4e90-b47a-61c9c2fe4799)
 
 ## Generic workflow:
 * Provide a web map for navigation to a location, and draw a bounding box
