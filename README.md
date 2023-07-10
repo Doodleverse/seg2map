@@ -113,6 +113,10 @@ A web browser will open, login with a gmail account and accept the terms and con
 
 ## Features
 ### 1. Download Imagery from Google Earth Engine
+
+![download_imagery_demo](https://github.com/Doodleverse/seg2map/assets/61564689/a36421de-e6d2-4a3f-8c08-2e47be99e3e0)
+
+
 ### 2. Apply Models to Imagery
 
 ![apply_model_demo](https://github.com/Doodleverse/seg2map/assets/61564689/75c55659-56f4-46f3-892d-6bebdcd6a653)
