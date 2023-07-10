@@ -108,6 +108,10 @@ First, you need to request access to Google Earth Engine at https://signup.earth
 Use google earth engine to download multiple years worth of imagery.
 ![download_imagery_demo](https://github.com/Doodleverse/seg2map/assets/61564689/a36421de-e6d2-4a3f-8c08-2e47be99e3e0)
 
+### You can download multiple ROIs and years of data at lighting speeds 🌩️
+
+![download_imagery_demo_multi_roi](https://github.com/Doodleverse/seg2map/assets/61564689/46219ca8-beed-46e0-a28f-0d5ceab6d474)
+
 
 ### 2. Apply Models to Imagery
 
