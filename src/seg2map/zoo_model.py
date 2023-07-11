@@ -321,9 +321,10 @@ def create_overlapping_tiles(
         raise Exception(f"Overlap failed. No tif files were found in {tiles_location}")
         return ""
     
-    jpeg_kwargs = {"format": "JPEG", "outputType": gdal.GDT_Byte}
+    # jpeg_kwargs = {"format": "JPEG", "outputType": gdal.GDT_Byte}
+    translateoptions= "-of JPEG -co QUALITY=100 -b 1 -b 2 -b 3"
     # Convert tif files to jpgs
-    jpg_files = common.gdal_translate_jpegs(tif_files, kwargs=jpeg_kwargs)
+    jpg_files = common.gdal_translate_jpegs(tif_files,translateoptions=translateoptions )
     if not jpg_files:
         logger.error(f"Overlap failed. No jpg files were found in {tiles_location}")
         raise Exception(f"Overlap failed. No tif files were found in {tiles_location}")
@@ -806,15 +807,24 @@ class ZooModel:
             None.
         """
         # perform segmentations for each year in each ROI
+        logger.info("self.model_list: %s", self.model_list)
+        logger.info("self.metadata_dict: %s", self.metadata_dict)
+        logger.info("self.model_types[0]: %s", self.model_types[0])
+        logger.info("NCLASSES: %s", self.NCLASSES)
+        logger.info("N_DATA_BANDS: %s", self.N_DATA_BANDS)
+        logger.info("TARGET_SIZE: %s", self.TARGET_SIZE)
+        logger.info("WRITE_MODELMETADATA: %s", False)
         for roi_data in preprocessed_data.values():
-
             for key in roi_data.keys():
                 if key == "roi_path":
                     continue
                 logger.info(f"roi_data[{key}]: {roi_data[key]}")
                 sample_direc = roi_data[key]["sample_direc"]
+                logger.info("sample_direc: %s", sample_direc)
                 use_tta = roi_data[key]["tta"]
+                logger.info("TESTTIMEAUG: %s", use_tta)
                 use_otsu = roi_data[key]["otsu"]
+                logger.info("OTSU_THRESHOLD: %s", use_otsu)
                 files_to_segment = self.get_files_for_seg(sample_direc)
                 logger.info(f"files_to_segment: {files_to_segment}")
                 if self.model_types[0] != "segformer":
@@ -822,7 +832,8 @@ class ZooModel:
                     from tensorflow.keras import mixed_precision
                     mixed_precision.set_global_policy("mixed_float16")
                 # run model for each file
-                for file_to_seg in tqdm.auto.tqdm(files_to_segment):
+                for file_to_seg in tqdm.auto.tqdm(files_to_segment,desc="Applying Model"):
+                    logger.info("file_to_seg: %s", file_to_seg)
                     do_seg(
                         file_to_seg,
                         self.model_list,
