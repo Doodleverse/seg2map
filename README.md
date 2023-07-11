@@ -4,6 +4,9 @@
 
 ![](https://user-images.githubusercontent.com/3596509/194389595-82ade668-daf0-4d24-b1a0-6ecf897f40fe.gif)
 
+![separate_seg_controls_demo (1)](https://github.com/Doodleverse/seg2map/assets/61564689/d527fe8c-c3f2-4c62-b448-e581162e8475)
+
+
 ## Overview:
 * Seg2Map facilitates application of Deep Learning-based image segmentation models and apply them to high-resolution (~1m or less spatial footprint) geospatial imagery, in order to make high-resolution label maps. Please see our [wiki](https://github.com/Doodleverse/seg2map/wiki) for more information.
 
@@ -79,16 +82,8 @@ conda clean --all
 
 First, you need to request access to Google Earth Engine at https://signup.earthengine.google.com/. It takes about 1 day for Google to approve requests.
 
-2. Authenticate with earthengine
 
-Once your request has been approved, with the `seg2map` environment activated, run the following command on the Anaconda Prompt(or terminal) to link your environment to the GEE server:
-``` bash
-earthengine authenticate
-```
-A web browser will open, login with a gmail account and accept the terms and conditions. Then copy the authorization code into the Anaconda terminal. In the latest version of the earthengine-api, the authentication is done with gcloud. If an error is raised about gcloud missing, go to https://cloud.google.com/sdk/docs/install and install gcloud. After you have installed it, close the Anaconda Prompt and restart it, then activate the environment before running earthengine authenticate again. 
-
-
-3. Activate your conda environment
+2. Activate your conda environment
 
    ```bash
    conda activate seg2map
@@ -97,18 +92,35 @@ A web browser will open, login with a gmail account and accept the terms and con
 - If you have successfully activated seg2map you should see that your terminal's command line prompt should now start with `(seg2map)`.
 
 
-4. Install the seg2map from PyPi
+3. Install the seg2map from PyPi
    ```bash
    cd <location you downloaded seg2map>
    ex: cd C:\1_repos\seg2map
    ```
-5. Launch Jupyter Lab
+4. Launch Jupyter Lab
 - make you run this command in the seg2map directory so you can choose a notebook to use.
    ```bash
    jupyter lab
    ```
 
+## Features
+### 1. Download Imagery from Google Earth Engine
+Use google earth engine to download multiple years worth of imagery.
+![download_imagery_demo](https://github.com/Doodleverse/seg2map/assets/61564689/a36421de-e6d2-4a3f-8c08-2e47be99e3e0)
 
+### You can download multiple ROIs and years of data at lighting speeds 🌩️
+
+![download_imagery_demo_multi_roi](https://github.com/Doodleverse/seg2map/assets/61564689/46219ca8-beed-46e0-a28f-0d5ceab6d474)
+
+
+### 2. Apply Models to Imagery
+
+![apply_model_demo](https://github.com/Doodleverse/seg2map/assets/61564689/75c55659-56f4-46f3-892d-6bebdcd6a653)
+
+
+### 3. Load Segmented Imagery onto the Map
+
+![load_segmentation_demo](https://github.com/Doodleverse/seg2map/assets/61564689/d6bbf3ba-a8a9-4e90-b47a-61c9c2fe4799)
 
 ## Generic workflow:
 * Provide a web map for navigation to a location, and draw a bounding box
