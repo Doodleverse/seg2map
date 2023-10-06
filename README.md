@@ -28,3 +28,31 @@ In order to use seg2map you need to install Python packages in an environment. W
   ```bash
   conda create --name seg2map python=3.10 -y
 
+2. Activate your conda environment
+
+   ```bash
+   conda activate seg2map
+   ```
+
+- If you have successfully activated seg2map you should see that your terminal's command line prompt should now start with `(seg2map)`.
+
+3. Install Conda Dependencies
+
+- seg2map requires `jupyterlab` and `geopandas` to function properly so they will be installed in the `seg2map` environment.
+- [Geopandas](https://geopandas.org/en/stable/) has [GDAL](https://gdal.org/) as a dependency so its best to install it with conda.
+- Make sure to install geopandas from the `conda-forge` channel to ensure you get the latest version.
+- Make sure to install both jupyterlab and geopandas from the conda forge channel to avoid dependency conflicts
+  
+```bash
+  conda install -c conda-forge geopandas jupyterlab -y
+  ```
+
+4. Install the seg2map from PyPi
+   ```bash
+   pip install seg2map
+   ```
+5. Uninstall the h5py installed by pip and reinstall with conda-forge
+   ```bash
+   pip uninstall h5py
+   conda install -c conda-forge h5py
+   ```
