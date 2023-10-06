@@ -53,6 +53,51 @@ In order to use seg2map you need to install Python packages in an environment. W
    ```
 5. Uninstall the h5py installed by pip and reinstall with conda-forge
    ```bash
-   pip uninstall h5py
-   conda install -c conda-forge h5py
+   pip uninstall h5py -y
+   conda install -c conda-forge h5py -y
    ```
+## **Having Installation Errors?**
+
+Use the command `conda clean --all` to clean old packages from your anaconda base environment. Ensure you are not in your seg2map environment or any other environment by running `conda deactivate`, to deactivate any environment you're in before running `conda clean --all`. It is recommended that you have Anaconda prompt (terminal for Mac and Linux) open as an administrator before you attempt to install `seg2map` again.
+
+#### Conda Clean Steps
+
+```bash
+conda deactivate
+conda clean --all
+```
+
+# How to Use Seg2Map
+
+1. Sign up to use Google Earth Engine Python API
+
+First, you need to request access to Google Earth Engine at https://signup.earthengine.google.com/. It takes about 1 day for Google to approve requests.
+
+2. Activate your conda environment
+
+   ```bash
+   conda activate seg2map
+   ```
+
+- If you have successfully activated seg2map you should see that your terminal's command line prompt should now start with `(seg2map)`.
+
+3. Install the seg2map from PyPi
+   ```bash
+   cd <location you downloaded seg2map>
+   ex: cd C:\1_repos\seg2map
+   ```
+4. Launch Jupyter Lab
+
+- make you run this command in the seg2map directory so you can choose a notebook to use.
+  ```bash
+  jupyter lab
+  ```
+
+## Features
+
+### 1. Download Imagery from Google Earth Engine
+
+Use google earth engine to download multiple years worth of imagery.
+![download_imagery_demo](https://github.com/Doodleverse/seg2map/assets/61564689/a36421de-e6d2-4a3f-8c08-2e47be99e3e0)
+
+### You can download multiple ROIs and years of data at lighting speeds 🌩�
